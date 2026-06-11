@@ -47,6 +47,8 @@ class DerivClient {
 
     this.ws.on("close", () => {
       console.log(`[${this.uid}] WS fermé`);
+      this.authorized = false;
+      this._updateUserDoc({ deriv_connected: false });
       if (this.running) {
         setTimeout(() => this.start(), 5000); // reconnect
       }
@@ -71,6 +73,7 @@ class DerivClient {
   _handleMessage(msg) {
     if (msg.error) {
       console.error(`[${this.uid}] Deriv error:`, msg.error.message);
+      if (!this.authorized) this._updateUserDoc({ deriv_connected: false });
       return;
     }
 
@@ -78,6 +81,12 @@ class DerivClient {
       case "authorize":
         this.authorized = true;
         console.log(`[${this.uid}] Autorisé: ${msg.authorize.loginid}`);
+        this._updateUserDoc({
+          deriv_balance:   msg.authorize.balance,
+          deriv_loginid:   msg.authorize.loginid,
+          deriv_currency:  msg.authorize.currency,
+          deriv_connected: true,
+        });
         this._subscribeCandles();
         this._subscribeDailyCandles();
         this._subscribeOpenContracts();
@@ -258,6 +267,11 @@ class DerivClient {
     });
     trade.tradeDbId = String(contract.contract_id);
 
+    // Solde mis à jour
+    if (contract.balance_after != null) {
+      this._updateUserDoc({ deriv_balance: contract.balance_after });
+    }
+
     // Telegram
     this._tg(
       `📊 <b>${direction}</b> ouvert\n` +
@@ -289,6 +303,11 @@ class DerivClient {
       closed_at:  admin.firestore.FieldValue.serverTimestamp(),
     });
 
+    // Solde mis à jour
+    if (tx.balance != null) {
+      this._updateUserDoc({ deriv_balance: tx.balance });
+    }
+
     // Telegram
     const won = profit >= 0;
     this._tg(
@@ -310,6 +329,12 @@ class DerivClient {
     if (this.openTrades.length === 0) return;
     // La vérification TP/SL globale est gérée par Deriv
     // On surveille via transaction events
+  }
+
+  _updateUserDoc(data) {
+    getDB().collection("users").doc(this.uid).set(data, { merge: true }).catch((err) => {
+      console.error(`[${this.uid}] Firestore update error:`, err.message);
+    });
   }
 
   _tg(msg) {

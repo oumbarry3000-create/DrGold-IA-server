@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { doc, onSnapshot, collection, query, orderBy, limit, setDoc } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import logo from "../assets/logo.png";
 
 export default function Dashboard() {
   const [userData, setUserData]   = useState(null);
@@ -58,9 +59,12 @@ export default function Dashboard() {
     <div style={s.page}>
       {/* Header */}
       <div style={s.topBar}>
-        <div>
-          <h1 style={s.appTitle}>◈ DrGold<span style={s.gold}> IA</span></h1>
-          <p style={s.appSub}>XAUUSD · TrendRider</p>
+        <div style={s.brand}>
+          <img src={logo} alt="DrGold IA" style={s.logoImg} />
+          <div>
+            <h1 style={s.appTitle}>DrGold<span style={s.gold}> IA</span></h1>
+            <p style={s.appSub}>XAUUSD · TrendRider</p>
+          </div>
         </div>
         <div style={s.topActions}>
           <a href="/settings" style={s.settingsBtn}>⚙️ Paramètres</a>
@@ -69,6 +73,30 @@ export default function Dashboard() {
             onClick={toggleEA} disabled={toggling}>
             {eaActive ? "🟢 EA Actif" : "🔴 EA Inactif"}
           </button>
+        </div>
+      </div>
+
+      {/* Capital Deriv */}
+      <div style={s.derivCard}>
+        <div style={s.derivHeader}>
+          <h3 style={s.sectionTitle}>💰 Capital Deriv</h3>
+          <span style={{ ...s.derivStatus, ...(userData?.deriv_connected ? s.derivOn : s.derivOff) }}>
+            {userData?.deriv_connected ? "🟢 Connecté" : "🔴 Déconnecté"}
+          </span>
+        </div>
+        <div style={s.derivBody}>
+          <div>
+            <p style={s.cardLabel}>Solde</p>
+            <p style={s.derivBalance}>
+              {userData?.deriv_balance != null
+                ? `${userData.deriv_balance.toFixed(2)} ${userData.deriv_currency || "USD"}`
+                : "—"}
+            </p>
+          </div>
+          <div>
+            <p style={s.cardLabel}>Compte Deriv</p>
+            <p style={s.derivLoginId}>{userData?.deriv_loginid || "—"}</p>
+          </div>
         </div>
       </div>
 
@@ -173,6 +201,8 @@ function TradeTable({ trades, open }) {
 const s = {
   page:         { minHeight: "100vh", background: "#060d1a", padding: "24px 20px", fontFamily: "'Inter', sans-serif", maxWidth: 960, margin: "0 auto" },
   topBar:       { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28, flexWrap: "wrap", gap: 12 },
+  brand:        { display: "flex", alignItems: "center", gap: 12 },
+  logoImg:      { width: 40, height: 40, borderRadius: 10 },
   appTitle:     { color: "#f1f5f9", fontSize: 22, fontWeight: 800, margin: "0 0 4px", letterSpacing: "-0.5px" },
   gold:         { color: "#f59e0b" },
   appSub:       { color: "#475569", fontSize: 13, margin: 0 },
@@ -181,6 +211,14 @@ const s = {
   eaToggle:     { border: "none", borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 800, cursor: "pointer" },
   eaOn:         { background: "#14532d33", color: "#22c55e", border: "1px solid #22c55e44" },
   eaOff:        { background: "#7f1d1d33", color: "#ef4444", border: "1px solid #ef444444" },
+  derivCard:    { background: "#0d1829", border: "1px solid #1e3a5f", borderRadius: 14, padding: 20, marginBottom: 20 },
+  derivHeader:  { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 },
+  derivStatus:  { fontSize: 12, fontWeight: 800, padding: "5px 12px", borderRadius: 999 },
+  derivOn:      { background: "#14532d33", color: "#22c55e", border: "1px solid #22c55e44" },
+  derivOff:     { background: "#7f1d1d33", color: "#ef4444", border: "1px solid #ef444444" },
+  derivBody:    { display: "flex", gap: 32, flexWrap: "wrap" },
+  derivBalance: { color: "#f59e0b", fontSize: 26, fontWeight: 800, margin: 0 },
+  derivLoginId: { color: "#f1f5f9", fontSize: 18, fontWeight: 700, margin: 0 },
   cards:        { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12, marginBottom: 24 },
   card:         { background: "#0d1829", border: "1px solid #1e3a5f", borderRadius: 12, padding: "16px 18px" },
   cardLabel:    { color: "#475569", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", margin: "0 0 8px" },
