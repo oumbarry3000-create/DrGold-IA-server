@@ -1,0 +1,16 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Chaque utilisateur accède uniquement à ses propres données
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+      match /trades/{tradeId} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+        // Écriture réservée au serveur (Firebase Admin SDK bypass les règles)
+        allow write: if false;
+      }
+    }
+  }
+}
