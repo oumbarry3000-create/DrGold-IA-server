@@ -11,14 +11,16 @@ export default function Dashboard() {
   const [trades, setTrades]       = useState([]);
   const [toggling, setToggling]   = useState(false);
   const [eaError, setEaError]     = useState(null);
+  const [inbox, setInbox]         = useState({ unread: 0, newAnnouncements: 0 });
 
   const uid = auth.currentUser?.uid;
 
   const load = useCallback(async () => {
     if (!uid) return;
     try {
-      const { user, trades } = await api.me();
+      const [{ user, trades }, status] = await Promise.all([api.me(), api.inboxStatus().catch(() => null)]);
       setUserData(user);
+      if (status) setInbox(status);
       setTrades(trades.map((t) => ({ id: t.contract_id, ...t })));
     } catch (err) {
       console.error("chargement dashboard:", err.message);
@@ -76,6 +78,9 @@ export default function Dashboard() {
         </div>
         <div style={s.topActions}>
           {userData?.is_admin && <a href="/admin" style={s.settingsBtn}>🛡️ Admin</a>}
+          <a href="/messages" style={s.settingsBtn}>
+            💬 Messages{inbox.unread > 0 && <span style={s.badge}>{inbox.unread}</span>}
+          </a>
           <a href="/settings" style={s.settingsBtn}>⚙️ Paramètres</a>
           <button style={s.settingsBtn} onClick={() => auth.signOut()}>Déconnexion</button>
           <button
@@ -87,6 +92,12 @@ export default function Dashboard() {
       </div>
 
       {eaError && <div style={s.eaError}>{eaError}</div>}
+
+      {inbox.newAnnouncements > 0 && (
+        <a href="/messages?tab=annonces" style={s.annBanner}>
+          📢 {inbox.newAnnouncements > 1 ? `${inbox.newAnnouncements} nouvelles annonces` : "Nouvelle annonce"} de DrGold IA — cliquez pour lire
+        </a>
+      )}
 
       {userData && <AccountPanel user={userData} onChange={load} />}
 
@@ -228,6 +239,8 @@ const s = {
   gold:         { color: "#f59e0b" },
   appSub:       { color: "#475569", fontSize: 13, margin: 0 },
   topActions:   { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" },
+  badge:        { marginLeft: 6, background: "#f59e0b", color: "#060d1a", borderRadius: 999, padding: "1px 7px", fontSize: 11, fontWeight: 800 },
+  annBanner:    { display: "block", background: "#78350f33", border: "1px solid #f59e0b66", borderRadius: 10, padding: "12px 16px", color: "#fcd34d", fontSize: 14, fontWeight: 600, textDecoration: "none", marginBottom: 16 },
   eaError:      { background: "#7f1d1d33", border: "1px solid #ef444455", borderRadius: 8, padding: "10px 14px", color: "#fca5a5", fontSize: 13, marginBottom: 16 },
   settingsBtn:  { background: "#0d1829", border: "1px solid #1e3a5f", borderRadius: 8, padding: "8px 16px", color: "#94a3b8", fontSize: 13, textDecoration: "none", fontWeight: 600, cursor: "pointer" },
   eaToggle:     { border: "none", borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 800, cursor: "pointer" },

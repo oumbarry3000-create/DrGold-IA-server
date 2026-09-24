@@ -452,4 +452,7 @@ async function approveAdmins() {
 module.exports = router;
 module.exports.decrypt = decrypt;
 module.exports.encrypt = encrypt;
+module.exports.requireAdmin = requireAdmin;
+module.exports.ensureUser = ensureUser;
+module.exports.ADMIN_EMAILS = ADMIN_EMAILS;
 module.exports.approveAdmins = approveAdmins;

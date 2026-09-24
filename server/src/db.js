@@ -71,6 +71,34 @@ CREATE TABLE IF NOT EXISTS payments (
   paid_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_payments_uid ON payments(uid);
+
+-- Messagerie support (une conversation par trader) + annonces
+CREATE TABLE IF NOT EXISTS messages (
+  id BIGSERIAL PRIMARY KEY,
+  uid TEXT NOT NULL REFERENCES users(uid),
+  sender TEXT NOT NULL,                 -- 'client' | 'admin'
+  body TEXT NOT NULL DEFAULT '',
+  attachment_url TEXT,
+  attachment_name TEXT,
+  attachment_type TEXT,                 -- 'image' | 'file'
+  read_by_client BOOLEAN NOT NULL DEFAULT false,
+  read_by_admin BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_messages_uid ON messages(uid, created_at);
+
+CREATE TABLE IF NOT EXISTS announcements (
+  id BIGSERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  audience TEXT NOT NULL DEFAULT 'all', -- 'all' | 'pro' | 'basic'
+  attachment_url TEXT,
+  attachment_name TEXT,
+  attachment_type TEXT,
+  emails_sent INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS announcements_seen_at TIMESTAMPTZ;
 `;
 
 async function initDb() {

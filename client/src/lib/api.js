@@ -48,5 +48,16 @@ export const api = {
   startCheckout: () => authFetch("/api/payment/checkout", { method: "POST" }),
   paymentStatus: (id) => authFetch(`/api/payment/${encodeURIComponent(id)}`),
   adminUsers: () => authFetch("/api/admin/users"),
+  inboxStatus: () => authFetch("/api/inbox/status"),
+  messages: () => authFetch("/api/messages"),
+  sendMessage: (body, attachment) => authFetch("/api/messages", { method: "POST", body: JSON.stringify({ body, attachment }) }),
+  announcements: () => authFetch("/api/announcements"),
+  uploadSignature: () => authFetch("/api/upload-signature"),
+  adminConversations: () => authFetch("/api/admin/conversations"),
+  adminMessages: (uid) => authFetch(`/api/admin/messages/${encodeURIComponent(uid)}`),
+  adminSendMessage: (uid, body, attachment) =>
+    authFetch(`/api/admin/messages/${encodeURIComponent(uid)}`, { method: "POST", body: JSON.stringify({ body, attachment }) }),
+  adminAnnouncements: () => authFetch("/api/admin/announcements"),
+  adminPostAnnouncement: (data) => authFetch("/api/admin/announcements", { method: "POST", body: JSON.stringify(data) }),
   adminUpdate: (uid, body) => authFetch(`/api/admin/users/${encodeURIComponent(uid)}`, { method: "POST", body: JSON.stringify(body) }),
 };

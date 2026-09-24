@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { ui, fmtXof, fmtDate } from "../lib/ui";
+import { AdminInbox, AdminAnnouncements } from "../components/AdminMessaging";
 
 const FILTERS = [
   ["all", "Tous"],
@@ -20,6 +21,17 @@ export default function Admin() {
   const [error, setError]   = useState(null);
   const [filter, setFilter] = useState("all");
   const [busy, setBusy]     = useState(null);
+  const [section, setSection] = useState("traders");
+  const [unread, setUnread]   = useState(0);
+  const [chatUid, setChatUid] = useState(null);
+
+  useEffect(() => {
+    const check = () => api.adminConversations()
+      .then((r) => setUnread(r.conversations.reduce((a, c) => a + c.unread, 0))).catch(() => {});
+    check();
+    const t = setInterval(check, 20000);
+    return () => clearInterval(t);
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -84,6 +96,19 @@ export default function Admin() {
         <h1 style={{ color: "#f1f5f9", fontSize: 22, fontWeight: 800, margin: 0 }}>🛡️ Administration <span style={{ color: "#f59e0b" }}>DrGold IA</span></h1>
         <button style={ui.btnDark} onClick={() => navigate("/dashboard")}>← Mon tableau de bord</button>
       </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 18, borderBottom: "1px solid #1e3a5f", paddingBottom: 12 }}>
+        {[["traders", "👥 Traders"], ["messages", "💬 Messages"], ["annonces", "📢 Annonces"]].map(([k, label]) => (
+          <button key={k} onClick={() => { setSection(k); if (k !== "messages") setChatUid(null); }}
+            style={{ ...ui.btnDark, ...(section === k ? { background: "#f59e0b", color: "#060d1a", border: "1px solid #f59e0b" } : {}) }}>
+            {label}{k === "messages" && unread > 0 && <span style={{ ...ui.badge("#ef4444", "#fff"), marginLeft: 6 }}>{unread}</span>}
+          </button>
+        ))}
+      </div>
+
+      {section === "messages" && <AdminInbox key={chatUid || "inbox"} startUid={chatUid} />}
+      {section === "annonces" && <AdminAnnouncements />}
+      {section === "traders" && (<>
 
       <div style={st.kpis}>
         <Kpi label="Traders" value={totals.traders} />
@@ -158,6 +183,7 @@ export default function Admin() {
                       {u.approved
                         ? <button style={ui.btnRed} disabled={busy === u.uid} onClick={() => act(u.uid, { approved: false }, `Suspendre ${u.email} ? Son bot sera arrêté.`)}>Suspendre</button>
                         : <button style={{ ...ui.btnSm, background: "#166534", border: "1px solid #22c55e" }} disabled={busy === u.uid} onClick={() => act(u.uid, { approved: true })}>Réactiver</button>}
+                      <button style={ui.btnSm} onClick={() => { setChatUid(u.uid); setSection("messages"); }}>💬 Écrire</button>
                       <button style={ui.btnSm} disabled={busy === u.uid} onClick={() => act(u.uid, { grantProDays: 30 }, `Offrir 30 jours de Pro à ${u.email} ?`)}>+30 j Pro</button>
                       {u.pro_active && <button style={ui.btnRed} disabled={busy === u.uid} onClick={() => act(u.uid, { revokePro: true }, `Retirer le Pro de ${u.email} ? Il repassera en démo.`)}>Retirer Pro</button>}
                       {u.ea_active && <button style={ui.btnRed} disabled={busy === u.uid} onClick={() => act(u.uid, { stopEA: true }, `Arrêter le bot de ${u.email} ?`)}>Stop bot</button>}
@@ -194,6 +220,7 @@ export default function Admin() {
           </table>
         )}
       </div>
+      </>)}
     </div>
   );
 }
