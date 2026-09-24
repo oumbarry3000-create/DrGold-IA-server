@@ -3,9 +3,9 @@
 // envois sont ignores sans erreur : la messagerie dans l'app fonctionne seule.
 // Attention : l'expediteur de test onboarding@resend.dev n'envoie qu'a
 // l'adresse du proprietaire du compte Resend ; pour ecrire aux clients il
-// faut un domaine verifie chez Resend (RESEND_FROM = "DrGold IA <x@domaine>").
+// faut un domaine verifie chez Resend (RESEND_FROM = "Tradify <x@domaine>").
 const API_KEY = process.env.RESEND_API_KEY || "";
-const FROM    = process.env.RESEND_FROM || "DrGold IA <onboarding@resend.dev>";
+const FROM    = process.env.RESEND_FROM || "Tradify <onboarding@resend.dev>";
 const APP_URL = process.env.FRONTEND_URL || "https://drgold-ia.web.app";
 
 const escapeHtml = (s) => String(s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -16,7 +16,7 @@ function layout(title, text, ctaLabel, ctaPath) {
     <h2 style="color:#f59e0b;margin:0 0 12px">${escapeHtml(title)}</h2>
     <p style="white-space:pre-wrap;line-height:1.6;margin:0 0 20px">${escapeHtml(text)}</p>
     <a href="${APP_URL}${ctaPath}" style="display:inline-block;background:#f59e0b;color:#060d1a;font-weight:bold;text-decoration:none;padding:10px 18px;border-radius:8px">${escapeHtml(ctaLabel)}</a>
-    <p style="color:#475569;font-size:12px;margin:20px 0 0">DrGold IA · trading automatisé XAUUSD</p>
+    <p style="color:#475569;font-size:12px;margin:20px 0 0">Tradify · trading automatisé XAUUSD</p>
   </div></div>`;
 }
 
@@ -31,7 +31,7 @@ async function post(path, payload) {
 }
 
 // Un email ; ne leve jamais (la messagerie ne doit pas echouer a cause de l'email)
-async function sendEmail(to, subject, title, text, ctaLabel = "Ouvrir DrGold IA", ctaPath = "/dashboard") {
+async function sendEmail(to, subject, title, text, ctaLabel = "Ouvrir Tradify", ctaPath = "/dashboard") {
   if (!API_KEY || !to) return false;
   try {
     await post("/emails", { from: FROM, to: [to], subject, html: layout(title, text, ctaLabel, ctaPath) });

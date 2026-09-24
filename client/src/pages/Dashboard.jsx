@@ -82,9 +82,9 @@ export default function Dashboard() {
       {/* Header */}
       <div style={s.topBar}>
         <div style={s.brand}>
-          <img src={logo} alt="DrGold IA" style={s.logoImg} />
+          <img src={logo} alt="Tradify" style={s.logoImg} />
           <div>
-            <h1 style={s.appTitle}>DrGold<span style={s.gold}> IA</span></h1>
+            <h1 style={s.appTitle}>Trad<span style={s.gold}>ify</span></h1>
             <p style={s.appSub}>XAUUSD · TrendRider</p>
           </div>
         </div>
@@ -110,7 +110,7 @@ export default function Dashboard() {
 
       {inbox.newAnnouncements > 0 && (
         <Link to="/messages?tab=annonces" style={s.annBanner}>
-          📢 {inbox.newAnnouncements > 1 ? `${inbox.newAnnouncements} nouvelles annonces` : "Nouvelle annonce"} de DrGold IA — cliquez pour lire
+          📢 {inbox.newAnnouncements > 1 ? `${inbox.newAnnouncements} nouvelles annonces` : "Nouvelle annonce"} de Tradify — cliquez pour lire
         </Link>
       )}
 
@@ -249,7 +249,7 @@ const s = {
   page:         { minHeight: "100vh", background: "#060d1a", padding: "24px 20px", fontFamily: "'Inter', sans-serif", maxWidth: 960, margin: "0 auto" },
   topBar:       { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28, flexWrap: "wrap", gap: 12 },
   brand:        { display: "flex", alignItems: "center", gap: 12 },
-  logoImg:      { width: 40, height: 40, borderRadius: 10 },
+  logoImg:      { width: 44, height: 44, objectFit: "contain" },
   appTitle:     { color: "#f1f5f9", fontSize: 22, fontWeight: 800, margin: "0 0 4px", letterSpacing: "-0.5px" },
   gold:         { color: "#f59e0b" },
   appSub:       { color: "#475569", fontSize: 13, margin: 0 },

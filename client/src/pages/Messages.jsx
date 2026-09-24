@@ -42,7 +42,7 @@ export default function Messages() {
 
   return (
     <div style={{ ...ui.page, maxWidth: 820 }}>
-      <PageHeader title="💬 Messages" subtitle="Support et annonces DrGold IA" />
+      <PageHeader title="💬 Messages" subtitle="Support et annonces Tradify" />
 
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
         {[["support", "Support"], ["annonces", "Annonces"]].map(([k, label]) => (

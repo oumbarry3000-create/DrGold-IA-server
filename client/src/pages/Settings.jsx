@@ -90,7 +90,7 @@ export default function Settings() {
   async function unlinkDeriv() {
     const ok = await confirmDialog({
       title: "Déconnecter votre compte Deriv ?",
-      message: "Le bot sera arrêté et DrGold n'aura plus accès à votre compte Deriv. Les positions déjà ouvertes iront jusqu'à leur échéance. Vous pourrez le reconnecter à tout moment.",
+      message: "Le bot sera arrêté et Tradify n'aura plus accès à votre compte Deriv. Les positions déjà ouvertes iront jusqu'à leur échéance. Vous pourrez le reconnecter à tout moment.",
       confirmLabel: "Déconnecter Deriv",
       danger: true,
     });
@@ -113,7 +113,7 @@ export default function Settings() {
   async function deleteAccount() {
     const ok = await confirmDialog({
       title: "Supprimer définitivement votre compte ?",
-      message: "Le bot sera arrêté, et votre compte DrGold, votre historique et vos messages seront effacés. Votre compte Deriv et votre argent chez Deriv ne sont PAS touchés. Cette action est irréversible.",
+      message: "Le bot sera arrêté, et votre compte Tradify, votre historique et vos messages seront effacés. Votre compte Deriv et votre argent chez Deriv ne sont PAS touchés. Cette action est irréversible.",
       confirmLabel: "Supprimer mon compte",
       danger: true,
       requireText: "SUPPRIMER",
@@ -274,14 +274,14 @@ export default function Settings() {
         <div style={s.accountRow}>
           <div>
             <p style={s.accountTitle}>Session</p>
-            <p style={s.accountHint}>Se déconnecter de DrGold sur cet appareil (le bot continue).</p>
+            <p style={s.accountHint}>Se déconnecter de Tradify sur cet appareil (le bot continue).</p>
           </div>
           <button style={s.neutralBtn} onClick={logout}>Se déconnecter</button>
         </div>
         <div style={{ ...s.accountRow, borderBottom: "none" }}>
           <div>
             <p style={{ ...s.accountTitle, color: "#fca5a5" }}>Supprimer mon compte</p>
-            <p style={s.accountHint}>Efface votre compte DrGold. Votre argent chez Deriv n'est pas touché.</p>
+            <p style={s.accountHint}>Efface votre compte Tradify. Votre argent chez Deriv n'est pas touché.</p>
           </div>
           <button style={s.dangerBtn} onClick={deleteAccount}>Supprimer</button>
         </div>

@@ -25,7 +25,7 @@ async function main() {
   await routes.approveAdmins();
 
   app.listen(PORT, () => {
-    console.log(`🚀 Serveur DrGold IA démarré sur port ${PORT}`);
+    console.log(`🚀 Serveur Tradify démarré sur port ${PORT}`);
   });
 
   // Lance le moteur EA (poll Firestore + WebSocket Deriv)

@@ -99,7 +99,7 @@ export default function Admin() {
 
   return (
     <div style={ui.page}>
-      <PageHeader title="🛡️ Administration DrGold IA" subtitle="Traders, messages, annonces et paiements" />
+      <PageHeader title="🛡️ Administration Tradify" subtitle="Traders, messages, annonces et paiements" />
 
       <div style={{ display: "flex", gap: 8, marginBottom: 18, borderBottom: "1px solid #1e3a5f", paddingBottom: 12 }}>
         {[["traders", "👥 Traders"], ["messages", "💬 Messages"], ["annonces", "📢 Annonces"]].map(([k, label]) => (

@@ -41,7 +41,7 @@ export default function DerivCallback() {
             {error === "expired" ? (
               <>
                 <p style={ui.muted}>
-                  Votre compte Deriv est créé ? Parfait : cliquez ci-dessous pour le connecter à DrGold
+                  Votre compte Deriv est créé ? Parfait : cliquez ci-dessous pour le connecter à Tradify
                   (connectez-vous avec l'email et le mot de passe de votre compte Deriv).
                 </p>
                 <button style={ui.btnGold} onClick={() => startDerivOAuth()}>Connecter mon compte Deriv</button>

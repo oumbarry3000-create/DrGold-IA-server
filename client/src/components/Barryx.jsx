@@ -1,5 +1,5 @@
 // src/components/Barryx.jsx
-// Barryx 🤖 : l'assistant IA de DrGold (l'admin en miniature). Bulle flottante
+// Barryx 🤖 : l'assistant IA de Tradify (l'admin en miniature). Bulle flottante
 // en bas a droite de toutes les pages connectees ; conversation gardee sur
 // l'appareil (localStorage), envoyee au serveur a chaque question.
 import { useEffect, useRef, useState } from "react";
@@ -8,7 +8,7 @@ import { auth } from "../lib/firebase";
 import { api } from "../lib/api";
 import { confirmDialog } from "./Dialog";
 
-const GREETING = "Salut 👋 Moi c'est **Barryx** 🤖, l'assistant de DrGold IA. Inscription, Deriv, activation du bot, formule Pro… pose-moi ta question !";
+const GREETING = "Salut 👋 Moi c'est **Barryx** 🤖, l'assistant de Tradify. Inscription, Deriv, activation du bot, formule Pro… pose-moi ta question !";
 const SUGGESTIONS = ["Comment activer le bot ?", "Connecter mon compte Deriv", "Passer en Pro", "Pourquoi aucun trade ?"];
 const MAX_KEPT = 40;
 
@@ -80,7 +80,7 @@ export default function Barryx() {
               <div style={st.avatar}>🤖</div>
               <div>
                 <div style={{ color: "#f1f5f9", fontWeight: 800, fontSize: 15 }}>Barryx</div>
-                <div style={{ color: "#22c55e", fontSize: 11 }}>● Assistant IA DrGold</div>
+                <div style={{ color: "#22c55e", fontSize: 11 }}>● Assistant IA Tradify</div>
               </div>
             </div>
             <div style={{ display: "flex", gap: 4 }}>

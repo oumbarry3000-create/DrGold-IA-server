@@ -85,7 +85,7 @@ async function enforceDailyLossLimits() {
       console.log(`[${row.uid}] 🛑 Limite de perte du jour atteinte (${pnl.toFixed(2)} $ / -${limit} $) : EA coupe`);
       const p = row.params || {};
       sendTelegram(p.tgBotToken, p.tgChatID,
-        `🛑 <b>DrGold IA arrêté</b>\nLimite de perte du jour atteinte : ${pnl.toFixed(2)} $ (limite ${limit} $).\nRéactivez l'EA demain depuis le tableau de bord.`,
+        `🛑 <b>Tradify arrêté</b>\nLimite de perte du jour atteinte : ${pnl.toFixed(2)} $ (limite ${limit} $).\nRéactivez l'EA demain depuis le tableau de bord.`,
         p.tgMiniAppURL).catch(() => {});
     }
   }

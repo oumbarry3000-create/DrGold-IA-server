@@ -39,9 +39,9 @@ export default function Login() {
       <div style={s.card}>
         <div style={s.header}>
           <div style={s.logoWrap}>
-            <img src={logo} alt="DrGold IA" style={s.logoImg} />
+            <img src={logo} alt="Tradify" style={s.logoImg} />
           </div>
-          <h1 style={s.title}>DrGold<span style={s.titleAccent}> IA</span></h1>
+          <h1 style={s.title}>Trad<span style={s.titleAccent}>ify</span></h1>
           <p style={s.subtitle}>Trading automatisé · XAUUSD</p>
         </div>
 
@@ -101,7 +101,7 @@ const s = {
   card:        { background: "#0d1829", border: "1px solid #1e3a5f", borderRadius: 20, padding: "44px 40px", width: "100%", maxWidth: 420 },
   header:      { textAlign: "center", marginBottom: 36 },
   logoWrap:    { marginBottom: 12 },
-  logoImg:     { width: 64, height: 64, borderRadius: 14, filter: "drop-shadow(0 0 12px #f59e0b88)" },
+  logoImg:     { width: 72, height: 72, objectFit: "contain" },
   title:       { color: "#f1f5f9", fontSize: 28, fontWeight: 800, margin: 0, letterSpacing: "-0.5px" },
   titleAccent: { color: "#f59e0b" },
   subtitle:    { color: "#475569", fontSize: 13, marginTop: 6 },

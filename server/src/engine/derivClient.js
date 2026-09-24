@@ -78,7 +78,7 @@ class DerivClient {
     console.log(`[${this.uid}] Connexion Deriv expiree : le client doit se reconnecter`);
     this.running = false;
     await pool.query("UPDATE users SET deriv_reauth_needed = true, deriv_connected = false WHERE uid = $1", [this.uid]).catch(() => {});
-    this._tg("⚠️ <b>DrGold IA en pause</b>\nVotre connexion Deriv a expiré. Ouvrez l'application et cliquez sur « Reconnecter Deriv ».");
+    this._tg("⚠️ <b>Tradify en pause</b>\nVotre connexion Deriv a expiré. Ouvrez l'application et cliquez sur « Reconnecter Deriv ».");
     throw new Error("connexion Deriv expiree (reconnexion requise)");
   }
 
@@ -188,7 +188,7 @@ class DerivClient {
           this._subscribeCandles();
           this._subscribeDailyCandles();
           this._subscribeOpenContracts();
-          this._tg(`🟢 <b>DrGold IA Démarré</b>\n📊 ${SYMBOL}\n💰 Balance: $${msg.balance.balance}`);
+          this._tg(`🟢 <b>Tradify Démarré</b>\n📊 ${SYMBOL}\n💰 Balance: $${msg.balance.balance}`);
         } else {
           this._updateUserDoc({ deriv_balance: msg.balance.balance });
         }
@@ -206,7 +206,7 @@ class DerivClient {
         this._subscribeCandles();
         this._subscribeDailyCandles();
         this._subscribeOpenContracts();
-        this._tg(`🟢 <b>DrGold IA Démarré</b>\n📊 ${SYMBOL}\n💰 Balance: $${msg.authorize.balance}`);
+        this._tg(`🟢 <b>Tradify Démarré</b>\n📊 ${SYMBOL}\n💰 Balance: $${msg.authorize.balance}`);
         break;
 
       case "candles":

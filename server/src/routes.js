@@ -184,14 +184,14 @@ router.post("/api/deriv/oauth", requireAuth, async (req, res) => {
     const accounts = await listAccounts(tokens.accessToken);
     if (accounts.length === 0) return res.status(400).json({ error: "Aucun compte trouve sur ce compte Deriv" });
 
-    // Un meme compte Deriv ne peut etre lie qu'a un seul utilisateur DrGold
+    // Un meme compte Deriv ne peut etre lie qu'a un seul utilisateur Tradify
     const ids = accounts.map((a) => a.account_id);
     const clash = await pool.query(
       `SELECT uid FROM users WHERE uid <> $1 AND deriv_accounts IS NOT NULL
          AND EXISTS (SELECT 1 FROM jsonb_array_elements(deriv_accounts) a WHERE a->>'account_id' = ANY($2))`,
       [req.uid, ids]
     );
-    if (clash.rows.length > 0) return res.status(409).json({ error: "Ce compte Deriv est deja lie a un autre utilisateur DrGold" });
+    if (clash.rows.length > 0) return res.status(409).json({ error: "Ce compte Deriv est deja lie a un autre utilisateur Tradify" });
 
     // Liaison reussie = compte valide automatiquement ; le bot utilisera ces
     // jetons OAuth (pas de token a copier par le client).
@@ -382,7 +382,7 @@ router.post("/api/payment/checkout", requireAuth, async (req, res) => {
       successUrl: `${FRONTEND_URL}/paiement?id=${id}`,
       failedUrl:  `${FRONTEND_URL}/paiement?id=${id}`,
       notifyUrl:  `${BACKEND_URL}/api/payment/webhook?id=${id}`,
-      description: `DrGold IA Pro - ${PRO_DAYS} jours`,
+      description: `Tradify Pro - ${PRO_DAYS} jours`,
     });
     res.status(201).json({ id, checkoutUrl });
   } catch (err) {

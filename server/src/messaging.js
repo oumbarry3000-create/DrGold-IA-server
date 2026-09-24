@@ -145,7 +145,7 @@ router.post("/api/admin/messages/:uid", requireAuth, requireAdmin, async (req, r
     const { rows: [u] } = await pool.query("SELECT email FROM users WHERE uid = $1", [req.params.uid]);
     if (!u) return res.status(404).json({ error: "trader introuvable" });
     const msg = await insertMessage(req.params.uid, "admin", body, att);
-    sendEmail(u.email, "💬 Le support DrGold IA vous a répondu", "Nouveau message du support",
+    sendEmail(u.email, "💬 Le support Tradify vous a répondu", "Nouveau message du support",
       body || "Vous avez reçu une pièce jointe.", "Lire le message", "/messages");
     res.status(201).json({ message: msg });
   } catch (err) {

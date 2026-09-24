@@ -43,10 +43,10 @@ function readLocalEnv() {
     let value = remote[key] || local[key];
     let source = remote[key] ? "Render PermiGo" : "PermiGo .env";
     if (!value) { console.log(`➖ ${key} introuvable dans PermiGo`); continue; }
-    // Meme adresse d'envoi, mais affichee comme "DrGold IA"
+    // Meme adresse d'envoi, mais affichee comme "Tradify"
     if (key === "RESEND_FROM") {
       const addr = (value.match(/<([^>]+)>/) || [null, value])[1];
-      value = `DrGold IA <${addr}>`;
+      value = `Tradify <${addr}>`;
       console.log(`ℹ️ Expéditeur emails : ${value}${/resend\.dev$/.test(addr) ? "  (adresse de TEST : n'envoie qu'au propriétaire du compte Resend)" : ""}`);
     }
     const put = await fetch(`${DRGOLD}/env-vars/${key}`, { method: "PUT", headers, body: JSON.stringify({ value }) });

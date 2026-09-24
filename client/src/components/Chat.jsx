@@ -86,7 +86,7 @@ export default function Chat({ messages, mySide, onSend, onEdit, onDelete, canEd
                 )}
                 <div style={st.meta}>
                   <span>
-                    {m.sender === "admin" ? "Support DrGold" : "Trader"} · {new Date(m.created_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}
+                    {m.sender === "admin" ? "Support Tradify" : "Trader"} · {new Date(m.created_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}
                     {m.edited_at && " · modifié"}
                   </span>
                   {!isEditing && (

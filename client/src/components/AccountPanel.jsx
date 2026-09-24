@@ -27,7 +27,7 @@ export default function AccountPanel({ user, onChange }) {
     return (
       <div style={{ ...ui.box, borderColor: "#ef444455" }}>
         <h3 style={{ ...ui.h3, color: "#fca5a5" }}>⛔ Compte suspendu</h3>
-        <p style={{ ...ui.muted, margin: 0 }}>Votre compte a été suspendu par l'équipe DrGold. Contactez le support.</p>
+        <p style={{ ...ui.muted, margin: 0 }}>Votre compte a été suspendu par l'équipe Tradify. Contactez le support.</p>
       </div>
     );
   }
@@ -60,7 +60,7 @@ function LinkDeriv() {
     <>
       <p style={ui.muted}>
         Pas encore de compte Deriv ? Créez-le avec notre bouton : c'est gratuit et <strong style={{ color: "#f1f5f9" }}>obligatoire</strong> pour
-        que votre compte DrGold soit validé.
+        que votre compte Tradify soit validé.
       </p>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <button style={ui.btnGold} onClick={() => startDerivOAuth({ signup: true })}>Créer mon compte Deriv</button>
