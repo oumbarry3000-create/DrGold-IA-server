@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
-import logo from "../assets/logo.png";
+import TradifyLogo from "../components/brand/TradifyLogo";
 
 export default function Login() {
   const [mode, setMode]             = useState("login");
@@ -39,7 +39,7 @@ export default function Login() {
       <div style={s.card}>
         <div style={s.header}>
           <div style={s.logoWrap}>
-            <img src={logo} alt="Tradify" style={s.logoImg} />
+            <TradifyLogo size={72} />
           </div>
           <h1 style={s.title}>Trad<span style={s.titleAccent}>ify</span></h1>
           <p style={s.subtitle}>Trading automatisé · XAUUSD</p>

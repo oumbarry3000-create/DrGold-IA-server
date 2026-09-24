@@ -1,7 +1,7 @@
 // src/lib/ui.js
 // Styles partages des nouvelles pages (meme palette que le tableau de bord).
 export const ui = {
-  page:    { minHeight: "100vh", background: "#060d1a", padding: "24px 16px", fontFamily: "'Inter', sans-serif", maxWidth: 1100, margin: "0 auto" },
+  page:    { width: "100%" },
   center:  { minHeight: "100vh", background: "#060d1a", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, fontFamily: "'Inter', sans-serif" },
   box:     { background: "#0d1829", border: "1px solid #1e3a5f", borderRadius: 14, padding: 20, marginBottom: 20 },
   h2:      { color: "#f1f5f9", fontSize: 18, fontWeight: 800, margin: "12px 0 8px" },

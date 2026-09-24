@@ -8,3 +8,4 @@ dist/
 npm-debug.log*
 firebase-debug.log*
 .claude/
+client/dev-preview/

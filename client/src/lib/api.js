@@ -70,5 +70,13 @@ export const api = {
   deleteAccount: () => authFetch("/api/me", { method: "DELETE", body: JSON.stringify({ confirm: "SUPPRIMER" }) }),
   assistantStatus: () => authFetch("/api/assistant/status"),
   askAssistant: (messages) => authFetch("/api/assistant", { method: "POST", body: JSON.stringify({ messages }) }),
+  stats: (days = 30) => authFetch(`/api/stats?days=${days}`),
+  trades: ({ status, limit = 50, offset = 0 } = {}) => authFetch(`/api/trades?limit=${limit}&offset=${offset}${status ? `&status=${status}` : ""}`),
+  livePositions: () => authFetch("/api/positions/live"),
+  marketAnalysis: () => authFetch("/api/market/analysis"),
+  notifications: (category) => authFetch(`/api/notifications${category ? `?category=${category}` : ""}`),
+  readNotification: (id) => authFetch(`/api/notifications/${id}/read`, { method: "POST" }),
+  readAllNotifications: () => authFetch("/api/notifications/read-all", { method: "POST" }),
+  updateProfile: (display_name) => authFetch("/api/profile", { method: "PUT", body: JSON.stringify({ display_name }) }),
   adminUpdate: (uid, body) => authFetch(`/api/admin/users/${encodeURIComponent(uid)}`, { method: "POST", body: JSON.stringify(body) }),
 };

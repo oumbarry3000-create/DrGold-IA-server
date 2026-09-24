@@ -1,83 +1,100 @@
 // src/pages/Messages.jsx
-// Espace messages du trader : conversation avec le support + annonces.
+// Centre de messages : notifications du bot (categories, marquer lu),
+// conversation avec le support et annonces de Tradify.
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Megaphone, Bell, LifeBuoy } from "lucide-react";
 import { api } from "../lib/api";
-import { ui } from "../lib/ui";
 import Chat, { Attachment } from "../components/Chat";
 import PageHeader from "../components/PageHeader";
+import MessageList from "../components/messages/MessageList";
+import { useAppData } from "../context/AppData";
+
+const TABS = [
+  ["notifications", "Notifications", Bell],
+  ["support", "Support", LifeBuoy],
+  ["annonces", "Annonces", Megaphone],
+];
 
 export default function Messages() {
-  const [tab, setTab]           = useState(new URLSearchParams(window.location.search).get("tab") === "annonces" ? "annonces" : "support");
+  const [params, setParams] = useSearchParams();
+  const tab = TABS.some(([k]) => k === params.get("tab")) ? params.get("tab") : "notifications";
+  const { inbox, loadInbox } = useAppData();
   const [messages, setMessages] = useState([]);
   const [annonces, setAnnonces] = useState(null);
-  const [uploads, setUploads]   = useState(false);
   const [error, setError]       = useState(null);
 
   const loadMessages = useCallback(async () => {
     try {
       const { messages } = await api.messages();
       setMessages(messages);
+      setError(null);
+      loadInbox();
     } catch (err) {
       setError(err.message);
     }
-  }, []);
+  }, [loadInbox]);
 
   useEffect(() => {
-    api.inboxStatus().then((s) => setUploads(s.uploads)).catch(() => {});
+    if (tab !== "support") return;
     loadMessages();
-    const t = setInterval(loadMessages, 10000);
+    const t = setInterval(() => { if (!document.hidden) loadMessages(); }, 10000);
     return () => clearInterval(t);
-  }, [loadMessages]);
+  }, [tab, loadMessages]);
 
   useEffect(() => {
-    if (tab === "annonces" && annonces === null) {
-      api.announcements().then((r) => setAnnonces(r.announcements)).catch((err) => setError(err.message));
+    if (tab === "annonces") {
+      api.announcements().then((r) => { setAnnonces(r.announcements); loadInbox(); }).catch((err) => setError(err.message));
     }
-  }, [tab, annonces]);
+  }, [tab, loadInbox]);
 
   async function send(body, attachment) {
     await api.sendMessage(body, attachment);
     await loadMessages();
   }
 
-  return (
-    <div style={{ ...ui.page, maxWidth: 820 }}>
-      <PageHeader title="💬 Messages" subtitle="Support et annonces Tradify" />
+  const counts = { notifications: inbox.unreadNotifications, support: inbox.unread, annonces: inbox.newAnnouncements };
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-        {[["support", "Support"], ["annonces", "Annonces"]].map(([k, label]) => (
-          <button key={k} onClick={() => setTab(k)}
-            style={{ ...ui.btnSm, ...(tab === k ? { background: "#f59e0b", color: "#060d1a", border: "1px solid #f59e0b" } : {}) }}>
-            {label}
+  return (
+    <div className="tf-stack" style={{ maxWidth: 900 }}>
+      <PageHeader title="Messages" subtitle="Notifications du bot, support et annonces" />
+      <div className="tf-tabs" role="tablist" aria-label="Rubriques">
+        {TABS.map(([k, label, Icon]) => (
+          <button key={k} type="button" role="tab" aria-selected={tab === k} className={`tf-chip${tab === k ? " is-active" : ""}`}
+            onClick={() => setParams({ tab: k }, { replace: true })}>
+            <Icon size={15} aria-hidden="true" /> {label}
+            {counts[k] > 0 && <span className="tf-nav__badge">{counts[k]}</span>}
           </button>
         ))}
       </div>
-      {error && <div style={ui.error}>{error}</div>}
+      {error && <div className="tf-alert tf-alert--danger">{error}</div>}
 
-      {tab === "support" ? (
-        <div style={ui.box}>
-          <p style={ui.muted}>Une question sur le bot, votre abonnement ou votre compte Deriv ? Écrivez-nous, nous répondons ici (et par email).</p>
-          <Chat messages={messages} mySide="client" onSend={send} uploads={uploads}
+      {tab === "notifications" && <MessageList />}
+
+      {tab === "support" && (
+        <section className="tf-card">
+          <p className="tf-muted" style={{ fontSize: 14, marginTop: 0 }}>Une question sur le bot, votre abonnement ou votre compte Deriv ? Écrivez-nous, nous répondons ici (et par email).</p>
+          <Chat messages={messages} mySide="client" onSend={send} uploads={inbox.uploads}
             canEdit={(m) => m.sender === "client"} canDelete={(m) => m.sender === "client"}
             onEdit={async (id, body) => { await api.editMessage(id, body); await loadMessages(); }}
             onDelete={async (id) => { await api.deleteMessage(id); await loadMessages(); }}
             emptyText="Aucun message pour l'instant. Écrivez-nous !" />
-        </div>
-      ) : (
-        <div>
-          {annonces === null ? <p style={ui.muted}>Chargement…</p>
-            : annonces.length === 0 ? <div style={ui.box}><p style={{ ...ui.muted, margin: 0, textAlign: "center" }}>Aucune annonce pour le moment</p></div>
-            : annonces.map((a) => (
-              <div key={a.id} style={ui.box}>
-                <p style={{ color: "#64748b", fontSize: 11, margin: "0 0 6px" }}>
-                  {new Date(a.created_at).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short" })}{a.updated_at ? " · mise à jour" : ""}
-                </p>
-                <h3 style={{ color: "#f59e0b", fontSize: 16, fontWeight: 800, margin: "0 0 8px" }}>📢 {a.title}</h3>
-                {a.attachment_url && <Attachment m={a} />}
-                <p style={{ color: "#cbd5e1", fontSize: 14, lineHeight: 1.6, margin: 0, whiteSpace: "pre-wrap" }}>{a.body}</p>
-              </div>
-            ))}
-        </div>
+        </section>
+      )}
+
+      {tab === "annonces" && (
+        annonces === null ? <div className="tf-skeleton" style={{ height: 140 }} aria-label="Chargement" />
+          : annonces.length === 0 ? <section className="tf-card"><div className="tf-empty"><Megaphone size={32} aria-hidden="true" />Aucune annonce pour le moment</div></section>
+          : annonces.map((a) => (
+            <article key={a.id} className="tf-card">
+              <p className="tf-muted" style={{ fontSize: 11, margin: "0 0 6px" }}>
+                {new Date(a.created_at).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short" })}{a.updated_at ? " · mise à jour" : ""}
+              </p>
+              <h2 style={{ color: "var(--gold)", fontSize: 16, fontWeight: 800, margin: "0 0 8px" }}>📢 {a.title}</h2>
+              {a.attachment_url && <Attachment m={a} />}
+              <p style={{ color: "var(--text-2)", fontSize: 14, lineHeight: 1.6, margin: 0, whiteSpace: "pre-wrap" }}>{a.body}</p>
+            </article>
+          ))
       )}
     </div>
   );

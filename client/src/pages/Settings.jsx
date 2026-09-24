@@ -12,6 +12,8 @@ export default function Settings() {
   const [params, setParams] = useState(null);
   const [savedParams, setSavedParams] = useState(null); // pour detecter les modifs non enregistrees
   const [loadError, setLoadError] = useState(null);
+  const [name, setName]           = useState("");
+  const [savedName, setSavedName] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved]   = useState(false);
   const [derivToken, setDerivToken]   = useState("");
@@ -28,6 +30,8 @@ export default function Settings() {
         setParams(p);
         setSavedParams(p);
         setDerivLogin(user?.deriv_loginid || null);
+        setName(user?.display_name || "");
+        setSavedName(user?.display_name || "");
       } catch (err) {
         setLoadError(err.message);
       }
@@ -61,6 +65,16 @@ export default function Settings() {
       notify(`Enregistrement impossible : ${err.message}`, "error");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveName() {
+    try {
+      const r = await api.updateProfile(name);
+      setSavedName(r.display_name || "");
+      notify("Nom enregistré");
+    } catch (err) {
+      notify(err.message, "error");
     }
   }
 
@@ -263,6 +277,16 @@ export default function Settings() {
         </Row>
       </Section>
 
+      <Section title="🪪 Profil">
+        <Row label="Nom affiché">
+          <div style={{ display: "flex", gap: 8 }}>
+            <input style={s.textInput} value={name} maxLength={60} placeholder="Ex. Barry A." aria-label="Nom affiché"
+              onChange={(e) => setName(e.target.value)} />
+            <button style={{ ...s.neutralBtn, opacity: name.trim() === savedName ? 0.5 : 1 }} disabled={name.trim() === savedName} onClick={saveName}>Enregistrer</button>
+          </div>
+        </Row>
+      </Section>
+
       <Section title="👤 Compte">
         <div style={s.accountRow}>
           <div>
@@ -352,7 +376,7 @@ function Toggle({ value, onChange }) {
 }
 
 const s = {
-  page:           { minHeight: "100vh", background: "#060d1a", padding: "32px 24px", fontFamily: "'Inter', sans-serif", maxWidth: 720, margin: "0 auto" },
+  page:           { maxWidth: 780, margin: "0 auto" },
   header:         { marginBottom: 32 },
   title:          { color: "#f1f5f9", fontSize: 24, fontWeight: 800, margin: "0 0 6px" },
   subtitle:       { color: "#475569", fontSize: 14, margin: 0 },
