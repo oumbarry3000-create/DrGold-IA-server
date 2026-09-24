@@ -271,6 +271,14 @@ router.put("/api/deriv-token", requireAuth, async (req, res) => {
         return res.status(400).json({ error: "Ce token appartient a un autre compte Deriv que celui que vous avez connecte." });
       }
     }
+    const clash = await pool.query(
+      `SELECT uid FROM users WHERE uid <> $1 AND deriv_accounts IS NOT NULL
+         AND EXISTS (SELECT 1 FROM jsonb_array_elements(deriv_accounts) a WHERE a->>'account_id' = ANY($2))`,
+      [req.uid, accounts.map((a) => a.account_id)]
+    );
+    if (clash.rows.length > 0) {
+      return res.status(409).json({ error: "Ce compte Deriv est deja lie a un autre compte Tradify." });
+    }
 
     await pool.query(
       `UPDATE users SET token_encrypted = $1, token_saved_at = now(),

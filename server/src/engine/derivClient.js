@@ -13,6 +13,8 @@ const DERIV_API    = "https://api.derivws.com/trading/v1/options";
 const DERIV_APP_ID = process.env.DERIV_APP_ID;
 const SYMBOL       = "frxXAUUSD";
 const MIN_STAKE    = 0.5; // mise minimale Deriv (USD)
+// compte Deriv -> uid du trader dont le bot l'utilise (un seul bot par compte)
+const accountOwners = new Map();
 const TIMEFRAME    = 60; // 1 minute candles
 
 class DerivClient {
@@ -115,6 +117,17 @@ class DerivClient {
       const account = this._pickAccount(accounts);
       if (!account) throw new Error(`aucun compte ${this.params.derivAccountType === "real" ? "reel" : "demo"} trouve`);
       this.accountId = account.account_id || account.accountId || account.loginid || account.id;
+      const owner = accountOwners.get(this.accountId);
+      if (owner && owner !== this.uid) {
+        // Deja trade par un autre compte Tradify : on met CE bot en pause
+        this.running = false;
+        await pool.query("UPDATE users SET ea_active = false, deriv_connected = false WHERE uid = $1", [this.uid]).catch(() => {});
+        notify(this.uid, { category: "bot", level: "danger", title: "Bot en pause : compte Deriv déjà utilisé",
+          body: `Le compte Deriv ${this.accountId} est déjà utilisé par un autre compte Tradify. Un compte Deriv ne peut faire tourner qu'un seul bot.` });
+        console.warn(`[${this.uid}] ⛔ ${this.accountId} déjà utilisé par ${owner} : bot mis en pause`);
+        throw new Error("compte Deriv deja utilise par un autre bot");
+      }
+      accountOwners.set(this.accountId, this.uid);
       this.accountCurrency = account.currency || "USD";
       const otp = await this._derivRest("POST", `/accounts/${this.accountId}/otp`);
       wsUrl = otp?.data?.url || otp?.url;
@@ -160,6 +173,7 @@ class DerivClient {
   }
 
   stop() {
+    if (this.accountId && accountOwners.get(this.accountId) === this.uid) accountOwners.delete(this.accountId);
     this.running = false;
     clearTimeout(this.retryTimer);
     clearInterval(this.reconcileTimer);

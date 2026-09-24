@@ -32,7 +32,7 @@ async function pollUsers() {
     const { rows } = await pool.query(
       `SELECT uid, ea_active, approved, params, token_encrypted, oauth_access_encrypted, oauth_refresh_encrypted,
               deriv_reauth_needed, plan, plan_expires_at, deriv_account_type
-       FROM users`
+       FROM users ORDER BY created_at`
     );
 
     // Comptes supprimes : on coupe leur bot
