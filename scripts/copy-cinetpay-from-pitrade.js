@@ -12,16 +12,17 @@ if (!pitradeKey || !drgoldKey) {
 
 const PITRADE = "https://api.render.com/v1/services/srv-d9u8kf6417fc73805u7g";
 const DRGOLD  = "https://api.render.com/v1/services/srv-daqjblojo6nc73eljp40";
-const KEYS    = ["CINETPAY_API_KEY", "CINETPAY_API_PASSWORD"];
+const KEYS    = ["CINETPAY_BASE_URL", "CINETPAY_API_KEY", "CINETPAY_API_PASSWORD"];
 
 (async () => {
   const src = await fetch(`${PITRADE}/env-vars?limit=100`, { headers: { Authorization: `Bearer ${pitradeKey}` } });
   if (!src.ok) { console.log(`❌ Lecture piTrade impossible (${src.status})`); return; }
   const vars = Object.fromEntries((await src.json()).map((x) => [x.envVar.key, x.envVar.value]));
+  console.log(`ℹ️ Adresse CinetPay de piTrade : ${vars.CINETPAY_BASE_URL || "(non définie = https://api.cinetpay.net)"}`);
 
   const headers = { Authorization: `Bearer ${drgoldKey}`, "Content-Type": "application/json" };
   for (const key of KEYS) {
-    if (!vars[key]) { console.log(`❌ ${key} absent aussi sur piTrade`); continue; }
+    if (!vars[key]) { console.log(`➖ ${key} non défini sur piTrade (valeur actuelle conservée)`); continue; }
     const res = await fetch(`${DRGOLD}/env-vars/${key}`, { method: "PUT", headers, body: JSON.stringify({ value: vars[key] }) });
     console.log(`${res.ok ? "✅" : "❌"} ${key} (${res.status})`);
   }
