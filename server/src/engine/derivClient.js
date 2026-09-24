@@ -142,6 +142,7 @@ class DerivClient {
     this.ws.on("close", () => {
       console.log(`[${this.uid}] WS fermé`);
       this.authorized = false;
+      clearInterval(this.reconcileTimer);
       this._updateUserDoc({ deriv_connected: false });
       if (this.running) {
         this.retryTimer = setTimeout(() => this.start(), 5000); // reconnect (nouvel OTP)
@@ -156,6 +157,7 @@ class DerivClient {
   stop() {
     this.running = false;
     clearTimeout(this.retryTimer);
+    clearInterval(this.reconcileTimer);
     if (this.ws) this.ws.close();
   }
 
@@ -232,6 +234,10 @@ class DerivClient {
         this._onBuy(msg);
         break;
 
+      case "proposal_open_contract":
+        this._onContractUpdate(msg.proposal_open_contract);
+        break;
+
       case "proposal_open_contracts":
         if (msg.proposal_open_contracts) {
           this._checkOpenContracts(msg.proposal_open_contracts);
@@ -275,6 +281,65 @@ class DerivClient {
   _subscribeOpenContracts() {
     this._send({ proposal_open_contract: 1, subscribe: 1 });
     this._send({ transaction: 1, subscribe: 1 });
+    // Source de verite = la base : on interroge Deriv sur chaque trade encore
+    // "open", y compris ceux ouverts avant un redemarrage du serveur.
+    clearInterval(this.reconcileTimer);
+    this._reconcileOpenTrades();
+    this.reconcileTimer = setInterval(() => this._reconcileOpenTrades(), 60_000);
+  }
+
+  async _reconcileOpenTrades() {
+    try {
+      const { rows } = await pool.query(
+        `SELECT contract_id, direction, lots, grid_level FROM trades
+         WHERE uid = $1 AND status = 'open' AND (account_id = $2 OR account_id IS NULL)`,
+        [this.uid, this.accountId || null]
+      );
+      // Positions en memoire alignees sur la base (grille correcte apres redemarrage)
+      for (const r of rows) {
+        if (!this.openTrades.some((t) => String(t.contractId) === r.contract_id)) {
+          this.openTrades.push({ contractId: r.contract_id, direction: r.direction, lots: Number(r.lots), gridLevel: r.grid_level, tradeDbId: r.contract_id });
+        }
+      }
+      for (const r of rows) this._send({ proposal_open_contract: 1, contract_id: Number(r.contract_id) });
+    } catch (err) {
+      console.error(`[${this.uid}] reconcile error:`, err.message);
+    }
+  }
+
+  // Etat d'un contrat renvoye par Deriv : on enregistre le VRAI resultat a la cloture
+  async _onContractUpdate(poc) {
+    if (!poc || !poc.contract_id) return;
+    const id = String(poc.contract_id);
+    if (poc.entry_spot != null) {
+      pool.query("UPDATE trades SET entry = $1 WHERE contract_id = $2 AND status = 'open'", [Number(poc.entry_spot), id]).catch(() => {});
+    }
+    const closed = poc.is_sold === 1 || poc.is_sold === true || ["won", "lost", "sold"].includes(poc.status);
+    if (!closed) return;
+
+    const profit = Number(poc.profit ?? (Number(poc.sell_price || 0) - Number(poc.buy_price || 0)));
+    const exit   = Number(poc.exit_spot ?? poc.exit_tick ?? poc.sell_spot ?? poc.current_spot ?? 0);
+    const when   = poc.sell_time || poc.date_expiry;
+    const { rows } = await pool.query(
+      `UPDATE trades SET exit = $1, pnl = $2, status = 'closed',
+         closed_at = COALESCE(to_timestamp($3::double precision), now())
+       WHERE contract_id = $4 AND status = 'open' RETURNING direction`,
+      [exit, profit, when || null, id]
+    ).catch((err) => { console.error(`[${this.uid}] close trade error:`, err.message); return { rows: [] }; });
+    if (!rows.length) return; // deja enregistre
+
+    this.openTrades = this.openTrades.filter((t) => String(t.contractId) !== id);
+    if (this.openTrades.length === 0) {
+      this.gridLevel    = 0;
+      this.signalLocked = false;
+    }
+    console.log(`[${this.uid}] Trade ${id} fermé : ${profit >= 0 ? "+" : ""}${profit.toFixed(2)} $`);
+    const won = profit >= 0;
+    this._tg(
+      `${won ? "✅" : "❌"} <b>Trade ${won ? "gagné" : "perdu"}</b>\n` +
+      `💰 P&L: ${won ? "+" : ""}$${profit.toFixed(2)}\n` +
+      `📊 ${SYMBOL} | ${rows[0].direction}`
+    );
   }
 
   _processOHLC(ohlc) {
@@ -391,37 +456,10 @@ class DerivClient {
   }
 
   _onSell(tx) {
-    const contractId = tx.contract_id;
-    const idx = this.openTrades.findIndex((t) => t.contractId === contractId);
-    if (idx === -1) return;
-
-    const trade  = this.openTrades[idx];
-    const profit = tx.amount || 0;
-    this.openTrades.splice(idx, 1);
-
-    if (this.openTrades.length === 0) {
-      this.gridLevel   = 0;
-      this.signalLocked = false;
-    }
-
-    // Update Postgres
-    pool.query(
-      `UPDATE trades SET exit = $1, pnl = $2, status = 'closed', closed_at = now() WHERE contract_id = $3`,
-      [tx.price || 0, profit, trade.tradeDbId]
-    ).catch((err) => console.error(`[${this.uid}] update trade error:`, err.message));
-
-    // Solde mis à jour
-    if (tx.balance != null) {
-      this._updateUserDoc({ deriv_balance: tx.balance });
-    }
-
-    // Telegram
-    const won = profit >= 0;
-    this._tg(
-      `${won ? "✅" : "❌"} <b>Trade ${won ? "gagné" : "perdu"}</b>\n` +
-      `💰 P&L: ${profit >= 0 ? "+" : ""}$${profit.toFixed(2)}\n` +
-      `📊 ${SYMBOL} | ${trade.direction}`
-    );
+    // Le montant de la transaction est le versement, pas le profit : on
+    // redemande a Deriv l'etat exact du contrat (profit, prix de sortie).
+    if (tx.balance != null) this._updateUserDoc({ deriv_balance: tx.balance });
+    if (tx.contract_id) this._send({ proposal_open_contract: 1, contract_id: Number(tx.contract_id) });
   }
 
   _checkOpenContracts(contracts) {
