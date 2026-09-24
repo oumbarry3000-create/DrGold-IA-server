@@ -400,6 +400,8 @@ router.get("/api/admin/users", requireAuth, requireAdmin, async (req, res) => {
       delete u.params;
       return u;
     });
+    // Checkout ouvert puis abandonne : on le classe "expire" apres 2 h
+    await pool.query("UPDATE payments SET status = 'expired' WHERE status = 'pending' AND created_at < now() - interval '2 hours'");
     const payments = await pool.query(
       "SELECT id, uid, amount, status, created_at, paid_at FROM payments ORDER BY created_at DESC LIMIT 100"
     );

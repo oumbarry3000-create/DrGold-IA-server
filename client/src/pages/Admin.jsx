@@ -8,8 +8,8 @@ import { api } from "../lib/api";
 import { ui, fmtXof, fmtDate } from "../lib/ui";
 
 const FILTERS = [
-  ["pending", "Non liés / suspendus"],
   ["all", "Tous"],
+  ["pending", "Non liés / suspendus"],
   ["active", "Bot actif"],
   ["pro", "Pro"],
 ];
@@ -18,7 +18,7 @@ export default function Admin() {
   const navigate = useNavigate();
   const [data, setData]     = useState(null);
   const [error, setError]   = useState(null);
-  const [filter, setFilter] = useState("pending");
+  const [filter, setFilter] = useState("all");
   const [busy, setBusy]     = useState(null);
 
   const load = useCallback(async () => {
@@ -184,6 +184,7 @@ export default function Admin() {
                   <td style={st.td}>
                     {p.status === "paid" ? <span style={ui.badge("#14532d55", "#86efac")}>Payé</span>
                       : p.status === "failed" ? <span style={ui.badge("#7f1d1d55", "#fca5a5")}>Échoué</span>
+                      : p.status === "expired" ? <span style={ui.badge("#1e293b", "#64748b")}>Expiré</span>
                       : <span style={ui.badge("#78350f55", "#fcd34d")}>En attente</span>}
                   </td>
                   <td style={st.td}>{fmtDate(p.paid_at || p.created_at)}</td>
