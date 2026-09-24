@@ -36,7 +36,16 @@ export async function encryptToken(token) {
   return encrypted;
 }
 
+// Appel sans session Tradify (connexion via Deriv)
+async function publicFetch(path, body) {
+  const res = await fetch(`${SERVER_URL}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
+  return data;
+}
+
 export const api = {
+  loginWithDeriv: (code, code_verifier, signup) => publicFetch("/api/auth/deriv", { code, code_verifier, signup }),
   register: (extra = {}) => authFetch("/api/register", { method: "POST", body: JSON.stringify(extra) }),
   me: () => authFetch("/api/me"),
   saveSettings: (params) => authFetch("/api/settings", { method: "PUT", body: JSON.stringify({ params }) }),

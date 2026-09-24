@@ -25,14 +25,15 @@ export function redirectUri() {
   return `${window.location.origin}/deriv-callback`;
 }
 
-export async function startDerivOAuth({ signup = false } = {}) {
+// mode "link" : lier Deriv au compte Tradify connecte ; "login" : se connecter a Tradify avec Deriv
+export async function startDerivOAuth({ signup = false, mode = "link" } = {}) {
   const verifier  = randomString(64);
   const state     = randomString(32);
   const challenge = await sha256Base64Url(verifier);
   // localStorage (et non sessionStorage) : la creation de compte Deriv passe
   // souvent par un email de verification qui rouvre le site dans un NOUVEL
   // onglet. Contexte indexe par "state", valable 30 min.
-  saveContexts({ ...loadContexts(), [state]: { verifier, signup, at: Date.now() } });
+  saveContexts({ ...loadContexts(), [state]: { verifier, signup, mode, at: Date.now() } });
 
   const params = new URLSearchParams({
     response_type: "code",
@@ -77,5 +78,5 @@ export function takeOAuthContext(returnedState) {
     delete all[returnedState];
     saveContexts(all);
   }
-  return ctx ? { verifier: ctx.verifier, signup: !!ctx.signup } : null;
+  return ctx ? { verifier: ctx.verifier, signup: !!ctx.signup, mode: ctx.mode || "link" } : null;
 }

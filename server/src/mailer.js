@@ -31,8 +31,10 @@ async function post(path, payload) {
 }
 
 // Un email ; ne leve jamais (la messagerie ne doit pas echouer a cause de l'email)
+const isTechnical = (to) => /@deriv\.tradify$/i.test(String(to || ""));
+
 async function sendEmail(to, subject, title, text, ctaLabel = "Ouvrir Tradify", ctaPath = "/dashboard") {
-  if (!API_KEY || !to) return false;
+  if (!API_KEY || !to || isTechnical(to)) return false;
   try {
     await post("/emails", { from: FROM, to: [to], subject, html: layout(title, text, ctaLabel, ctaPath) });
     return true;
@@ -44,6 +46,7 @@ async function sendEmail(to, subject, title, text, ctaLabel = "Ouvrir Tradify", 
 
 // Envoi groupe (annonces) par paquets de 100 ; renvoie le nombre d'emails acceptes
 async function sendBulk(recipients, subject, title, text, ctaLabel, ctaPath) {
+  recipients = recipients.filter((to) => !isTechnical(to));
   if (!API_KEY || recipients.length === 0) return 0;
   let sent = 0;
   for (let i = 0; i < recipients.length; i += 100) {

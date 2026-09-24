@@ -14,7 +14,7 @@ async function requireAuth(req, res, next) {
   try {
     const decoded = await admin.auth().verifyIdToken(idToken);
     req.uid = decoded.uid;
-    req.email = decoded.email;
+    req.email = decoded.email || `${decoded.uid}@deriv.tradify`; // comptes "Continuer avec Deriv"
     next();
   } catch (err) {
     res.status(401).json({ error: "token invalide ou expire" });

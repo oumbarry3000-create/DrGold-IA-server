@@ -62,7 +62,7 @@ export default function App() {
           <Route path="/admin"       element={<Admin />} />
         </Route>
         <Route path="/paiement"       element={<PrivateRoute><Payment /></PrivateRoute>} />
-        <Route path="/deriv-callback" element={<PrivateRoute><DerivCallback /></PrivateRoute>} />
+        <Route path="/deriv-callback" element={<DerivCallback />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>

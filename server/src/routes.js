@@ -216,6 +216,60 @@ router.post("/api/deriv/oauth", requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/auth/deriv — "Continuer avec Deriv" (sans compte Tradify prealable).
+// Le code OAuth prouve la possession du compte Deriv : on connecte le compte
+// Tradify deja lie a ce compte Deriv, sinon on en cree un (valide, lie).
+// Renvoie un custom token Firebase pour signInWithCustomToken.
+router.post("/api/auth/deriv", async (req, res) => {
+  try {
+    const { code, code_verifier, signup } = req.body || {};
+    if (!code || !code_verifier) return res.status(400).json({ error: "code OAuth manquant" });
+    const tokens   = await exchangeOAuthCode({ code, codeVerifier: code_verifier, redirectUri: OAUTH_REDIRECT });
+    const accounts = await listAccounts(tokens.accessToken);
+    if (accounts.length === 0) return res.status(400).json({ error: "Aucun compte trouvé sur ce compte Deriv" });
+
+    const ids = accounts.map((a) => a.account_id);
+    const { rows } = await pool.query(
+      `SELECT uid FROM users WHERE deriv_accounts IS NOT NULL
+         AND EXISTS (SELECT 1 FROM jsonb_array_elements(deriv_accounts) a WHERE a->>'account_id' = ANY($1))
+       ORDER BY created_at LIMIT 1`,
+      [ids]
+    );
+
+    const primary = (accounts.find((a) => a.account_type === "real") || accounts[0]).account_id;
+    let uid = rows[0]?.uid;
+    const isNew = !uid;
+    if (isNew) {
+      uid = `deriv_${primary}`;
+      try {
+        await firebaseAdmin.auth().getUser(uid);
+      } catch {
+        await firebaseAdmin.auth().createUser({ uid, displayName: `Deriv ${primary}` });
+      }
+      await pool.query(
+        `INSERT INTO users (uid, email, ea_active, params, approved, display_name)
+         VALUES ($1, $2, false, $3, true, $4) ON CONFLICT (uid) DO NOTHING`,
+        [uid, `${uid}@deriv.tradify`, JSON.stringify(DEFAULT_EA_PARAMS), `Trader ${primary}`]
+      );
+    }
+    await pool.query(
+      `UPDATE users SET deriv_accounts = $1, deriv_linked_at = now(),
+         deriv_signup_via_app = deriv_signup_via_app OR $2,
+         oauth_access_encrypted = $3, oauth_refresh_encrypted = COALESCE($4, oauth_refresh_encrypted), oauth_expires_at = $5,
+         deriv_reauth_needed = false
+       WHERE uid = $6`,
+      [JSON.stringify(accounts), !!signup, encrypt(tokens.accessToken),
+       tokens.refreshToken ? encrypt(tokens.refreshToken) : null, tokens.expiresAt, uid]
+    );
+    const customToken = await firebaseAdmin.auth().createCustomToken(uid, { deriv: true });
+    console.log(`🔑 Connexion via Deriv (${primary}) : ${isNew ? "nouveau compte" : "compte existant"} ${uid}`);
+    res.json({ customToken, isNew });
+  } catch (err) {
+    console.error("deriv login error:", err.message);
+    res.status(502).json({ error: err.message.startsWith("OAuth") ? "La connexion Deriv a échoué, réessayez." : err.message });
+  }
+});
+
 // PUT /api/deriv-token — enregistre le token du bot apres verification
 // aupres de Deriv (et qu'il appartient bien au compte lie en OAuth).
 router.put("/api/deriv-token", requireAuth, async (req, res) => {
