@@ -29,9 +29,10 @@ export async function startDerivOAuth({ signup = false } = {}) {
   const verifier  = randomString(64);
   const state     = randomString(32);
   const challenge = await sha256Base64Url(verifier);
-  sessionStorage.setItem("deriv_pkce_verifier", verifier);
-  sessionStorage.setItem("deriv_oauth_state", state);
-  sessionStorage.setItem("deriv_oauth_signup", signup ? "1" : "0");
+  // localStorage (et non sessionStorage) : la creation de compte Deriv passe
+  // souvent par un email de verification qui rouvre le site dans un NOUVEL
+  // onglet. Contexte indexe par "state", valable 30 min.
+  saveContexts({ ...loadContexts(), [state]: { verifier, signup, at: Date.now() } });
 
   const params = new URLSearchParams({
     response_type: "code",
@@ -51,14 +52,30 @@ export async function startDerivOAuth({ signup = false } = {}) {
   window.location.href = `${AUTH_URL}?${params}`;
 }
 
+const STORE_KEY = "deriv_oauth_ctx";
+const MAX_AGE   = 30 * 60 * 1000;
+
+function loadContexts() {
+  try {
+    const all = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+    // on ne garde que les contextes recents
+    return Object.fromEntries(Object.entries(all).filter(([, c]) => Date.now() - c.at < MAX_AGE));
+  } catch {
+    return {};
+  }
+}
+
+function saveContexts(all) {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(all)); } catch { /* stockage indisponible */ }
+}
+
 // Lit et consomme le contexte PKCE stocke avant la redirection
 export function takeOAuthContext(returnedState) {
-  const verifier = sessionStorage.getItem("deriv_pkce_verifier");
-  const state    = sessionStorage.getItem("deriv_oauth_state");
-  const signup   = sessionStorage.getItem("deriv_oauth_signup") === "1";
-  sessionStorage.removeItem("deriv_pkce_verifier");
-  sessionStorage.removeItem("deriv_oauth_state");
-  sessionStorage.removeItem("deriv_oauth_signup");
-  if (!verifier || !state || state !== returnedState) return null;
-  return { verifier, signup };
+  const all = loadContexts();
+  const ctx = returnedState ? all[returnedState] : null;
+  if (ctx) {
+    delete all[returnedState];
+    saveContexts(all);
+  }
+  return ctx ? { verifier: ctx.verifier, signup: !!ctx.signup } : null;
 }

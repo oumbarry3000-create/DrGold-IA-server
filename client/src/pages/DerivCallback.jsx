@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
-import { takeOAuthContext } from "../lib/derivOAuth";
+import { takeOAuthContext, startDerivOAuth } from "../lib/derivOAuth";
 import { ui } from "../lib/ui";
 
 export default function DerivCallback() {
@@ -23,7 +23,7 @@ export default function DerivCallback() {
     }
     const ctx = takeOAuthContext(q.get("state"));
     if (!q.get("code") || !ctx) {
-      setError("Session de connexion expirée. Recommencez depuis le tableau de bord.");
+      setError("expired");
       return;
     }
     api.linkDerivOAuth(q.get("code"), ctx.verifier, ctx.signup)
@@ -37,9 +37,24 @@ export default function DerivCallback() {
         {error ? (
           <>
             <p style={{ fontSize: 32, margin: 0 }}>⚠️</p>
-            <h2 style={ui.h2}>Liaison Deriv impossible</h2>
-            <p style={ui.muted}>{error}</p>
-            <button style={ui.btnGold} onClick={() => navigate("/dashboard", { replace: true })}>Retour au tableau de bord</button>
+            <h2 style={ui.h2}>{error === "expired" ? "Encore une étape" : "Liaison Deriv impossible"}</h2>
+            {error === "expired" ? (
+              <>
+                <p style={ui.muted}>
+                  Votre compte Deriv est créé ? Parfait : cliquez ci-dessous pour le connecter à DrGold
+                  (connectez-vous avec l'email et le mot de passe de votre compte Deriv).
+                </p>
+                <button style={ui.btnGold} onClick={() => startDerivOAuth()}>Connecter mon compte Deriv</button>
+              </>
+            ) : (
+              <>
+                <p style={ui.muted}>{error}</p>
+                <button style={ui.btnGold} onClick={() => startDerivOAuth()}>Réessayer</button>
+              </>
+            )}
+            <div style={{ marginTop: 12 }}>
+              <button style={ui.btnDark} onClick={() => navigate("/dashboard", { replace: true })}>Retour au tableau de bord</button>
+            </div>
           </>
         ) : (
           <>
