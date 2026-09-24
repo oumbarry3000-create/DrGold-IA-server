@@ -18,4 +18,5 @@ export const ui = {
 };
 
 export const fmtXof = (n) => `${Number(n || 0).toLocaleString("fr-FR")} FCFA`;
+export const fmtUsd = (n) => `${Number(n || 0).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} $`;
 export const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("fr-FR") : "—");

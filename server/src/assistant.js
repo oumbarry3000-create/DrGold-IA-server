@@ -20,7 +20,8 @@ const MODELS    = [process.env.AI_MODEL || "gemini-3.6-flash",
 const DAILY_LIMIT  = Number(process.env.BARRYX_DAILY_LIMIT || 40); // messages / trader / jour
 const MAX_HISTORY  = 12;
 const MAX_CHARS    = 1500;
-const PRO_PRICE    = Number(process.env.PRO_PRICE_XOF || 10000);
+const { usdToXof } = require("./fx");
+const PRO_PRICE_USD = Number(process.env.PRO_PRICE_USD || 17);
 const PRO_DAYS     = Number(process.env.PRO_DAYS || 30);
 
 const client = API_KEY ? new OpenAI({ apiKey: API_KEY, baseURL: BASE_URL, maxRetries: 2 }) : null;
@@ -38,7 +39,7 @@ function takeQuota(uid, isAdmin) {
   return DAILY_LIMIT - entry.count;
 }
 
-const KNOWLEDGE = `Tu es **Barryx** 🤖, l'assistant IA officiel de **Tradify**. Tu es l'administrateur de Tradify "en miniature" : tu connais toute l'application et tu réponds aux traders comme le ferait l'admin lui-même — chaleureux, direct, rassurant, en français simple (le public est surtout au Burkina Faso et en Afrique de l'Ouest).
+const knowledge = () => `Tu es **Barryx** 🤖, l'assistant IA officiel de **Tradify**. Tu es l'administrateur de Tradify "en miniature" : tu connais toute l'application et tu réponds aux traders comme le ferait l'admin lui-même — chaleureux, direct, rassurant, en français simple (le public est surtout au Burkina Faso et en Afrique de l'Ouest).
 
 # Style
 - Réponses COURTES : 2 à 6 phrases ou une petite liste d'étapes numérotées. Pas de longs pavés.
@@ -77,7 +78,7 @@ Site : https://drgold-ia.web.app — un robot de trading automatique sur l'or (X
 
 ## Formules
 - **Basique** : gratuite, le bot trade sur le compte DÉMO (argent virtuel, ~10 000 $) — pour tester sans risque.
-- **Pro** : ${PRO_PRICE.toLocaleString("fr-FR")} FCFA pour ${PRO_DAYS} jours — permet de trader sur le compte RÉEL.
+- **Pro** : ${PRO_PRICE_USD} $ pour ${PRO_DAYS} jours — permet de trader sur le compte RÉEL. Le paiement se fait en FCFA, converti au taux du jour : aujourd'hui environ ${usdToXof(PRO_PRICE_USD).toLocaleString("fr-FR")} FCFA (le montant exact s'affiche sur le bouton « Passer Pro »).
   Payer : carte « 💎 Ma formule » → « Passer Pro » (ou « Prolonger ») → paiement CinetPay (Orange Money, Moov Money, autres moyens proposés) → valider sur le téléphone → page « 🎉 Formule Pro activée ». Si la page reste sur « Vérification du paiement… » plus de 2-3 minutes, écrire au Support avec la référence.
   Passer en réel : dans « Ma formule », choisir « Compte réel » puis taper REEL pour confirmer. Il faut de l'argent sur le compte réel Deriv (dépôt à faire chez Deriv ; Tradify ne gère pas les dépôts ni les retraits).
   À l'expiration du Pro sans renouvellement, le bot repasse automatiquement en démo. Prolonger ajoute ${PRO_DAYS} jours à la date de fin.
@@ -188,7 +189,7 @@ router.post("/api/assistant", requireAuth, async (req, res) => {
        FROM trades WHERE uid = $1`,
       [req.uid]
     );
-    const system = u ? `${KNOWLEDGE}\n\n${contextBlock(u, stats)}` : KNOWLEDGE;
+    const system = u ? `${knowledge()}\n\n${contextBlock(u, stats)}` : knowledge();
     const reply  = await askModel(system, messages);
     res.json({ reply, remaining: isAdmin ? null : remaining });
   } catch (err) {

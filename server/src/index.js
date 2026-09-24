@@ -4,6 +4,7 @@ const express = require("express");
 const cors    = require("cors");
 const { initFirebase } = require("./firebase");
 const { initDb }        = require("./db");
+const { startFx }       = require("./fx");
 const routes  = require("./routes");
 const { startEAEngine } = require("./engine/manager");
 
@@ -23,6 +24,7 @@ async function main() {
   await initDb();
   console.log("✅ Base de donnees (Neon) initialisee");
   await routes.approveAdmins();
+  startFx();
 
   app.listen(PORT, () => {
     console.log(`🚀 Serveur Tradify démarré sur port ${PORT}`);

@@ -106,6 +106,9 @@ ALTER TABLE announcements ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
 ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_uid_fkey;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS email TEXT;
 UPDATE payments p SET email = u.email FROM users u WHERE p.uid = u.uid AND p.email IS NULL;
+-- Prix Pro en dollars, paye en FCFA : on garde le prix USD et le taux utilise
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS amount_usd NUMERIC;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS fx_rate NUMERIC;
 `;
 
 async function initDb() {

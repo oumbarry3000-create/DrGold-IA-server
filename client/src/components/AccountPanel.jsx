@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { api } from "../lib/api";
 import { startDerivOAuth } from "../lib/derivOAuth";
-import { ui, fmtXof, fmtDate } from "../lib/ui";
+import { ui, fmtXof, fmtUsd, fmtDate } from "../lib/ui";
 import { confirmDialog, notify } from "./Dialog";
 
 const TOKEN_RENEW_DAYS = 80; // les tokens Deriv expirent au plus tard a 90 jours
@@ -121,11 +121,15 @@ function PlanCard({ user, onChange }) {
                  : <span style={ui.badge("#1e293b", "#94a3b8")}>Gratuit · démo</span>}
           </p>
           <p style={{ ...ui.muted, margin: 0 }}>
-            {pro ? "Compte réel autorisé, statistiques complètes." : `Pro : trading sur compte réel · ${fmtXof(user.pro_price_xof)} / ${user.pro_days} jours`}
+            {pro ? "Compte réel autorisé, statistiques complètes." : `Pro : trading sur compte réel · ${fmtUsd(user.pro_price_usd)} / ${user.pro_days} jours`}
+            <br />
+            <span style={{ fontSize: 12 }}>
+              Payable en FCFA (Orange Money, Moov…) : ≈ {fmtXof(user.pro_price_xof)} au taux du jour (1 $ = {user.fx_rate} FCFA).
+            </span>
           </p>
         </div>
         <button style={{ ...ui.btnGold, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={subscribe}>
-          {pro ? `Prolonger (${fmtXof(user.pro_price_xof)})` : `Passer Pro · ${fmtXof(user.pro_price_xof)}`}
+          {pro ? `Prolonger · ${fmtUsd(user.pro_price_usd)}` : `Passer Pro · ${fmtUsd(user.pro_price_usd)}`}
         </button>
       </div>
 

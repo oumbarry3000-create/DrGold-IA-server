@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
-import { ui, fmtXof, fmtDate } from "../lib/ui";
+import { ui, fmtXof, fmtUsd, fmtDate } from "../lib/ui";
 import { AdminInbox, AdminAnnouncements } from "../components/AdminMessaging";
 import { confirmDialog, notify } from "../components/Dialog";
 import PageHeader from "../components/PageHeader";
@@ -88,7 +88,9 @@ export default function Admin() {
     filter === "pro"     ? u.pro_active : true);
 
   const paid      = data.payments.filter((p) => p.status === "paid");
-  const revenue30 = paid.filter((p) => new Date(p.paid_at) > Date.now() - 30 * 86400000).reduce((a, p) => a + p.amount, 0);
+  const paid30    = paid.filter((p) => new Date(p.paid_at) > Date.now() - 30 * 86400000);
+  const revenue30 = paid30.reduce((a, p) => a + p.amount, 0);
+  const revenue30Usd = paid30.reduce((a, p) => a + (p.amount_usd != null ? Number(p.amount_usd) : p.amount / Number(p.fx_rate || 600)), 0);
   const totals = {
     traders: users.length,
     pending: users.filter((u) => !u.approved).length,
@@ -119,7 +121,7 @@ export default function Admin() {
         <Kpi label="Non liés / suspendus" value={totals.pending} color={totals.pending ? "#f59e0b" : undefined} />
         <Kpi label="Bots actifs" value={totals.active} color="#22c55e" />
         <Kpi label="Abonnés Pro" value={totals.pro} color="#a78bfa" />
-        <Kpi label="Revenus 30 j" value={fmtXof(revenue30)} color="#f59e0b" />
+        <Kpi label="Revenus 30 j" value={fmtUsd(revenue30Usd)} sub={fmtXof(revenue30)} color="#f59e0b" />
         <Kpi label="P&L clients" value={`${totals.pnl >= 0 ? "+" : ""}$${totals.pnl.toFixed(2)}`} color={totals.pnl >= 0 ? "#22c55e" : "#ef4444"} />
       </div>
 
@@ -218,7 +220,7 @@ export default function Admin() {
                 <tr key={p.id} style={{ borderBottom: "1px solid #0f2040" }}>
                   <td style={{ ...st.td, fontFamily: "monospace" }}>{p.id}</td>
                   <td style={st.td}>{users.find((u) => u.uid === p.uid)?.email || p.email || p.uid}{!users.find((u) => u.uid === p.uid) && <span style={st.sub}> (compte supprimé)</span>}</td>
-                  <td style={st.td}>{fmtXof(p.amount)}</td>
+                  <td style={st.td}>{fmtXof(p.amount)}{p.amount_usd != null && <div style={st.sub}>{fmtUsd(p.amount_usd)} · 1 $ = {Number(p.fx_rate).toFixed(0)} F</div>}</td>
                   <td style={st.td}>
                     {p.status === "paid" ? <span style={ui.badge("#14532d55", "#86efac")}>Payé</span>
                       : p.status === "failed" ? <span style={ui.badge("#7f1d1d55", "#fca5a5")}>Échoué</span>
@@ -237,11 +239,12 @@ export default function Admin() {
   );
 }
 
-function Kpi({ label, value, color }) {
+function Kpi({ label, value, sub, color }) {
   return (
     <div style={{ background: "#0d1829", border: "1px solid #1e3a5f", borderRadius: 12, padding: "14px 16px" }}>
       <p style={{ color: "#475569", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", margin: "0 0 6px" }}>{label}</p>
       <p style={{ color: color || "#f1f5f9", fontSize: 20, fontWeight: 800, margin: 0 }}>{value}</p>
+      {sub && <p style={{ color: "#64748b", fontSize: 12, margin: "4px 0 0" }}>{sub}</p>}
     </div>
   );
 }

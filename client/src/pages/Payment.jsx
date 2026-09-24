@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
-import { ui, fmtXof } from "../lib/ui";
+import { ui, fmtXof, fmtUsd } from "../lib/ui";
 
 export default function Payment() {
   const navigate = useNavigate();
@@ -39,7 +39,7 @@ export default function Payment() {
             <p style={{ fontSize: 36, margin: 0 }}>🎉</p>
             <h2 style={ui.h2}>Formule Pro activée</h2>
             <p style={ui.muted}>
-              Paiement de {fmtXof(payment.amount)} confirmé : {payment.days} jours de Pro ajoutés.
+              Paiement de {fmtXof(payment.amount)}{payment.amount_usd ? ` (${fmtUsd(payment.amount_usd)})` : ""} confirmé : {payment.days} jours de Pro ajoutés.
               Vous pouvez maintenant passer votre bot sur votre compte réel.
             </p>
           </>

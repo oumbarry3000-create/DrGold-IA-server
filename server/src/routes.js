@@ -14,7 +14,9 @@ const IV_LENGTH = 16;
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "oumbarry2999@gmail.com")
   .split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
-const PRO_PRICE_XOF = Number(process.env.PRO_PRICE_XOF || 10000);
+const { usdToXof, usdToXofRate, freshRate } = require("./fx");
+// Prix Pro fixe en dollars ; le client paie l'equivalent en FCFA au taux du jour
+const PRO_PRICE_USD = Number(process.env.PRO_PRICE_USD || 17);
 const PRO_DAYS      = Number(process.env.PRO_DAYS || 30);
 const FRONTEND_URL  = process.env.FRONTEND_URL || "https://drgold-ia.web.app";
 const BACKEND_URL   = process.env.BACKEND_URL || "https://drgold-ia-server-m1mz.onrender.com";
@@ -104,7 +106,9 @@ function publicUser(row) {
   user.pro_active       = !!isProActive(row);
   user.effective_account_type = effectiveAccountType(row);
   user.token_age_days   = row.token_saved_at ? Math.floor((Date.now() - new Date(row.token_saved_at)) / 86400000) : null;
-  user.pro_price_xof    = PRO_PRICE_XOF;
+  user.pro_price_usd    = PRO_PRICE_USD;
+  user.pro_price_xof    = usdToXof(PRO_PRICE_USD); // indicatif, recalcule au paiement
+  user.fx_rate          = Math.round(usdToXofRate() * 100) / 100;
   user.pro_days         = PRO_DAYS;
   return user;
 }
@@ -372,19 +376,21 @@ router.post("/api/payment/checkout", requireAuth, async (req, res) => {
   try {
     await ensureUser(req.uid, req.email);
     const id = "DG" + Date.now().toString(36).toUpperCase() + crypto.randomBytes(3).toString("hex").toUpperCase();
+    const rate      = await freshRate();
+    const amountXof = usdToXof(PRO_PRICE_USD);
     await pool.query(
-      "INSERT INTO payments (id, uid, amount, days, email) VALUES ($1, $2, $3, $4, $5)",
-      [id, req.uid, PRO_PRICE_XOF, PRO_DAYS, req.email]
+      "INSERT INTO payments (id, uid, amount, days, email, amount_usd, fx_rate) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+      [id, req.uid, amountXof, PRO_DAYS, req.email, PRO_PRICE_USD, rate]
     );
     const checkoutUrl = await cinetpay.createCheckout({
-      amount: PRO_PRICE_XOF,
+      amount: amountXof,
       transactionId: id,
       successUrl: `${FRONTEND_URL}/paiement?id=${id}`,
       failedUrl:  `${FRONTEND_URL}/paiement?id=${id}`,
       notifyUrl:  `${BACKEND_URL}/api/payment/webhook?id=${id}`,
-      description: `Tradify Pro - ${PRO_DAYS} jours`,
+      description: `Tradify Pro - ${PRO_DAYS} jours (${PRO_PRICE_USD} USD)`,
     });
-    res.status(201).json({ id, checkoutUrl });
+    res.status(201).json({ id, checkoutUrl, amountXof, amountUsd: PRO_PRICE_USD });
   } catch (err) {
     console.error("checkout error:", err.message);
     res.status(502).json({ error: "Paiement indisponible pour le moment, reessayez plus tard." });
@@ -412,7 +418,7 @@ router.get("/api/payment/:id", requireAuth, async (req, res) => {
     const { rows } = await pool.query("SELECT uid FROM payments WHERE id = $1", [req.params.id]);
     if (!rows[0] || rows[0].uid !== req.uid) return res.status(404).json({ error: "paiement introuvable" });
     const payment = await applyPayment(req.params.id);
-    res.json({ id: payment.id, status: payment.status, amount: payment.amount, days: payment.days });
+    res.json({ id: payment.id, status: payment.status, amount: payment.amount, amount_usd: payment.amount_usd != null ? Number(payment.amount_usd) : null, days: payment.days });
   } catch (err) {
     console.error("payment status error:", err.message);
     res.status(502).json({ error: "Verification du paiement impossible, reessayez dans un instant." });
@@ -451,7 +457,7 @@ router.get("/api/admin/users", requireAuth, requireAdmin, async (req, res) => {
     // Checkout ouvert puis abandonne : on le classe "expire" apres 2 h
     await pool.query("UPDATE payments SET status = 'expired' WHERE status = 'pending' AND created_at < now() - interval '2 hours'");
     const payments = await pool.query(
-      "SELECT id, uid, email, amount, status, created_at, paid_at FROM payments ORDER BY created_at DESC LIMIT 100"
+      "SELECT id, uid, email, amount, amount_usd, fx_rate, status, created_at, paid_at FROM payments ORDER BY created_at DESC LIMIT 100"
     );
     res.json({ users, payments: payments.rows });
   } catch (err) {
