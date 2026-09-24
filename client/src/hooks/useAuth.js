@@ -5,6 +5,7 @@ import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
   signOut,
+  sendPasswordResetEmail,
 } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { api, encryptToken } from "../lib/api";
@@ -42,9 +43,15 @@ export function useAuth() {
     finally { setLoading(false); }
   }
 
+  async function resetPassword(email) {
+    setError(null);
+    try { await sendPasswordResetEmail(auth, email); }
+    catch (err) { setError(err.message); throw err; }
+  }
+
   async function logout() {
     await signOut(auth);
   }
 
-  return { user, register, login, logout, loading, error };
+  return { user, register, login, logout, resetPassword, loading, error };
 }

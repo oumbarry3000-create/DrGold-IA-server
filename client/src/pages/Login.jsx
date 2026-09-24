@@ -10,7 +10,13 @@ export default function Login() {
   const [password, setPassword]     = useState("");
   const [derivToken, setDerivToken] = useState("");
   const [showHelp, setShowHelp]     = useState(false);
-  const { login, register, loading, error } = useAuth();
+  const { login, register, resetPassword, loading, error } = useAuth();
+  const [resetSent, setResetSent] = useState(false);
+
+  async function handleReset() {
+    if (!email) { alert("Entrez d'abord votre email"); return; }
+    try { await resetPassword(email); setResetSent(true); } catch {}
+  }
   const navigate = useNavigate();
 
   async function handleSubmit() {
@@ -121,6 +127,8 @@ const s = {
   helpBox:     { background: "#0a1525", border: "1px solid #1e3a5f", borderRadius: 8, padding: "10px 12px" },
   helpText:    { color: "#64748b", fontSize: 12, lineHeight: 1.7, margin: 0 },
   link:        { color: "#f59e0b" },
+  linkBtn:     { background: "none", border: "none", color: "#f59e0b", fontSize: 13, cursor: "pointer", alignSelf: "center" },
+  resetInfo:   { color: "#86efac", fontSize: 13, textAlign: "center", margin: 0 },
   errorBox:    { background: "#7f1d1d33", border: "1px solid #ef444455", borderRadius: 8, padding: "10px 14px", color: "#fca5a5", fontSize: 13 },
   btn:         { background: "linear-gradient(135deg, #f59e0b, #d97706)", color: "#060d1a", border: "none", borderRadius: 10, padding: "13px 0", fontSize: 15, fontWeight: 800, cursor: "pointer", width: "100%", letterSpacing: "0.3px" },
   btnDisabled: { opacity: 0.5, cursor: "not-allowed" },
