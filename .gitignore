@@ -7,3 +7,4 @@ dist/
 .env.local
 npm-debug.log*
 firebase-debug.log*
+.claude/

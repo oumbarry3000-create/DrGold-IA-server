@@ -32,6 +32,12 @@ async function pollUsers() {
        FROM users`
     );
 
+    // Comptes supprimes : on coupe leur bot
+    const existing = new Set(rows.map((r) => r.uid));
+    for (const uid of [...activeClients.keys()]) {
+      if (!existing.has(uid)) deactivateUser(uid);
+    }
+
     for (const row of rows) {
       const uid      = row.uid;
       // Token manuel prioritaire (24h/24), sinon connexion OAuth encore utilisable

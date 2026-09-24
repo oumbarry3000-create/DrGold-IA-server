@@ -9,19 +9,22 @@ export default function Login() {
   const [email, setEmail]           = useState("");
   const [password, setPassword]     = useState("");
   const [acceptRisk, setAcceptRisk] = useState(false);
+  const [formError, setFormError]   = useState(null);
   const { login, register, resetPassword, loading, error } = useAuth();
   const [resetSent, setResetSent] = useState(false);
 
   async function handleReset() {
-    if (!email) { alert("Entrez d'abord votre email"); return; }
+    setFormError(null);
+    if (!email) { setFormError("Entrez d'abord votre email, puis cliquez sur « Mot de passe oublié ? »."); return; }
     try { await resetPassword(email); setResetSent(true); } catch {}
   }
   const navigate = useNavigate();
 
   async function handleSubmit() {
-    if (!email || !password) return;
+    setFormError(null);
+    if (!email || !password) { setFormError("Entrez votre email et votre mot de passe."); return; }
     if (mode === "register" && !acceptRisk) {
-      alert("Vous devez accepter les risques du trading pour créer un compte");
+      setFormError("Vous devez accepter les risques du trading pour créer un compte.");
       return;
     }
     try {
@@ -72,7 +75,7 @@ export default function Login() {
             </label>
           )}
 
-          {error && <div style={s.errorBox}>{error}</div>}
+          {(formError || error) && <div style={s.errorBox}>{formError || error}</div>}
 
           <button style={{ ...s.btn, ...(loading ? s.btnDisabled : {}) }}
             onClick={handleSubmit} disabled={loading}>

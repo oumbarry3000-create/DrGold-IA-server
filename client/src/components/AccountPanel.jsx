@@ -5,6 +5,7 @@ import { useState } from "react";
 import { api } from "../lib/api";
 import { startDerivOAuth } from "../lib/derivOAuth";
 import { ui, fmtXof, fmtDate } from "../lib/ui";
+import { confirmDialog, notify } from "./Dialog";
 
 const TOKEN_RENEW_DAYS = 80; // les tokens Deriv expirent au plus tard a 90 jours
 
@@ -87,12 +88,20 @@ function PlanCard({ user, onChange }) {
   }
 
   async function switchType(type) {
-    if (type === "real" && !window.confirm(
-      "Passer le bot sur votre compte RÉEL ?\n\nLe bot tradera avec votre argent. Vous pouvez perdre tout ou partie de votre capital."
-    )) return;
+    if (type === "real") {
+      const ok = await confirmDialog({
+        title: "Passer sur votre compte RÉEL ?",
+        message: "Le bot tradera avec votre argent. Vous pouvez perdre tout ou partie de votre capital. Vérifiez vos paramètres (mise, perte max par jour) avant.",
+        confirmLabel: "Oui, trader en réel",
+        danger: true,
+        requireText: "REEL",
+      });
+      if (!ok) return;
+    }
     setBusy(true); setError(null);
     try {
       await api.setAccountType(type);
+      notify(type === "real" ? "Le bot trade maintenant sur votre compte réel" : "Le bot trade maintenant sur votre compte démo");
       onChange?.();
     } catch (err) {
       setError(err.message);

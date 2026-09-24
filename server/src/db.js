@@ -99,6 +99,13 @@ CREATE TABLE IF NOT EXISTS announcements (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE users ADD COLUMN IF NOT EXISTS announcements_seen_at TIMESTAMPTZ;
+
+-- Edition / suppression ; les paiements survivent a la suppression d'un compte (comptabilite)
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS edited_at TIMESTAMPTZ;
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
+ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_uid_fkey;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS email TEXT;
+UPDATE payments p SET email = u.email FROM users u WHERE p.uid = u.uid AND p.email IS NULL;
 `;
 
 async function initDb() {

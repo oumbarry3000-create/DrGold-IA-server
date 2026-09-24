@@ -3,9 +3,15 @@ import { useState, useEffect } from "react";
 import { auth } from "../lib/firebase";
 import { api } from "../lib/api";
 import { DEFAULT_EA_PARAMS } from "../lib/defaultParams";
+import { useNavigate } from "react-router-dom";
+import PageHeader from "../components/PageHeader";
+import { confirmDialog, notify } from "../components/Dialog";
 
 export default function Settings() {
+  const navigate = useNavigate();
   const [params, setParams] = useState(null);
+  const [savedParams, setSavedParams] = useState(null); // pour detecter les modifs non enregistrees
+  const [loadError, setLoadError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved]   = useState(false);
   const [derivToken, setDerivToken]   = useState("");
@@ -16,9 +22,15 @@ export default function Settings() {
     async function load() {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
-      const { user } = await api.me();
-      setParams({ ...DEFAULT_EA_PARAMS, ...(user?.params || {}) });
-      setDerivLogin(user?.deriv_loginid || null);
+      try {
+        const { user } = await api.me();
+        const p = { ...DEFAULT_EA_PARAMS, ...(user?.params || {}) };
+        setParams(p);
+        setSavedParams(p);
+        setDerivLogin(user?.deriv_loginid || null);
+      } catch (err) {
+        setLoadError(err.message);
+      }
     }
     load();
   }, []);
@@ -27,12 +39,93 @@ export default function Settings() {
     setParams((p) => ({ ...p, [key]: val }));
   }
 
+  const dirty = params && savedParams && JSON.stringify(params) !== JSON.stringify(savedParams);
+
+  // Fermeture de l'onglet avec des modifications non enregistrees
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
   async function save() {
     setSaving(true);
-    await api.saveSettings(params);
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    try {
+      await api.saveSettings(params);
+      setSavedParams(params);
+      setSaved(true);
+      notify("Paramètres enregistrés");
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err) {
+      notify(`Enregistrement impossible : ${err.message}`, "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function confirmLeave() {
+    if (!dirty) return true;
+    return confirmDialog({
+      title: "Quitter sans enregistrer ?",
+      message: "Vos modifications des paramètres seront perdues.",
+      confirmLabel: "Quitter sans enregistrer",
+      cancelLabel: "Rester",
+      danger: true,
+    });
+  }
+
+  async function resetDefaults() {
+    const ok = await confirmDialog({
+      title: "Réinitialiser les paramètres ?",
+      message: "Tous les réglages de l'EA reviennent aux valeurs par défaut (vos réglages Telegram sont conservés). Pensez à enregistrer ensuite.",
+      confirmLabel: "Réinitialiser",
+      danger: true,
+    });
+    if (!ok) return;
+    setParams((p) => ({ ...DEFAULT_EA_PARAMS, tgBotToken: p.tgBotToken, tgChatID: p.tgChatID, tgMiniAppURL: p.tgMiniAppURL }));
+    notify("Valeurs par défaut rétablies — cliquez sur Enregistrer");
+  }
+
+  async function unlinkDeriv() {
+    const ok = await confirmDialog({
+      title: "Déconnecter votre compte Deriv ?",
+      message: "Le bot sera arrêté et DrGold n'aura plus accès à votre compte Deriv. Les positions déjà ouvertes iront jusqu'à leur échéance. Vous pourrez le reconnecter à tout moment.",
+      confirmLabel: "Déconnecter Deriv",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api.unlinkDeriv();
+      notify("Compte Deriv déconnecté");
+      navigate("/dashboard");
+    } catch (err) {
+      notify(err.message, "error");
+    }
+  }
+
+  async function logout() {
+    if (!(await confirmLeave())) return;
+    const ok = await confirmDialog({ title: "Se déconnecter ?", message: "Le bot continue de trader même quand vous êtes déconnecté.", confirmLabel: "Se déconnecter" });
+    if (ok) await auth.signOut();
+  }
+
+  async function deleteAccount() {
+    const ok = await confirmDialog({
+      title: "Supprimer définitivement votre compte ?",
+      message: "Le bot sera arrêté, et votre compte DrGold, votre historique et vos messages seront effacés. Votre compte Deriv et votre argent chez Deriv ne sont PAS touchés. Cette action est irréversible.",
+      confirmLabel: "Supprimer mon compte",
+      danger: true,
+      requireText: "SUPPRIMER",
+    });
+    if (!ok) return;
+    try {
+      await api.deleteAccount();
+      await auth.signOut();
+      notify("Votre compte a été supprimé");
+    } catch (err) {
+      notify(err.message, "error");
+    }
   }
 
   async function saveDerivToken() {
@@ -47,14 +140,19 @@ export default function Settings() {
     }
   }
 
-  if (!params) return <PageWrap><p style={{ color: "#64748b" }}>Chargement...</p></PageWrap>;
+  if (!params) {
+    return (
+      <PageWrap>
+        <PageHeader title="⚙️ Paramètres" />
+        <p style={{ color: loadError ? "#fca5a5" : "#64748b" }}>{loadError ? `Chargement impossible : ${loadError}` : "Chargement..."}</p>
+      </PageWrap>
+    );
+  }
 
   return (
     <PageWrap>
-      <div style={s.header}>
-        <h2 style={s.title}>⚙️ Paramètres EA</h2>
-        <p style={s.subtitle}>Configuration TrendRider — XAUUSD</p>
-      </div>
+      <PageHeader title="⚙️ Paramètres EA" subtitle="Configuration TrendRider — XAUUSD" onBack={confirmLeave}
+        actions={<button style={s.resetBtn} onClick={resetDefaults}>↺ Réinitialiser</button>} />
 
       <Section title="🎯 Configuration Stratégie">
         <Row label="Mode Stratégie">
@@ -165,10 +263,35 @@ export default function Settings() {
         </Row>
       </Section>
 
+      <Section title="👤 Compte">
+        <div style={s.accountRow}>
+          <div>
+            <p style={s.accountTitle}>Compte Deriv</p>
+            <p style={s.accountHint}>{derivLogin ? `Connecté (${derivLogin}). Déconnecter arrête le bot.` : "Aucun compte Deriv connecté."}</p>
+          </div>
+          {derivLogin && <button style={s.dangerOutline} onClick={unlinkDeriv}>Déconnecter Deriv</button>}
+        </div>
+        <div style={s.accountRow}>
+          <div>
+            <p style={s.accountTitle}>Session</p>
+            <p style={s.accountHint}>Se déconnecter de DrGold sur cet appareil (le bot continue).</p>
+          </div>
+          <button style={s.neutralBtn} onClick={logout}>Se déconnecter</button>
+        </div>
+        <div style={{ ...s.accountRow, borderBottom: "none" }}>
+          <div>
+            <p style={{ ...s.accountTitle, color: "#fca5a5" }}>Supprimer mon compte</p>
+            <p style={s.accountHint}>Efface votre compte DrGold. Votre argent chez Deriv n'est pas touché.</p>
+          </div>
+          <button style={s.dangerBtn} onClick={deleteAccount}>Supprimer</button>
+        </div>
+      </Section>
+
       <div style={s.footer}>
-        <button style={{ ...s.saveBtn, ...(saving ? s.saveBtnDisabled : {}) }}
-          onClick={save} disabled={saving}>
-          {saved ? "✅ Paramètres sauvegardés" : saving ? "Sauvegarde..." : "Sauvegarder les paramètres"}
+        {dirty && !saving && <span style={s.dirtyHint}>● Modifications non enregistrées</span>}
+        <button style={{ ...s.saveBtn, ...(saving || (!dirty && !saved) ? s.saveBtnDisabled : {}) }}
+          onClick={save} disabled={saving || !dirty}>
+          {saved ? "✅ Paramètres enregistrés" : saving ? "Enregistrement..." : "Enregistrer les paramètres"}
         </button>
       </div>
     </PageWrap>
@@ -249,7 +372,15 @@ const s = {
   toggleOn:       { background: "#f59e0b" },
   toggleKnob:     { position: "absolute", top: 3, left: 3, width: 18, height: 18, borderRadius: "50%", background: "#475569", transition: "all 0.2s" },
   toggleKnobOn:   { left: 23, background: "#060d1a" },
-  footer:         { paddingTop: 8 },
+  footer:         { position: "sticky", bottom: 0, background: "#060d1a", padding: "12px 0", display: "flex", flexDirection: "column", gap: 8, zIndex: 5 },
   saveBtn:        { background: "linear-gradient(135deg, #f59e0b, #d97706)", color: "#060d1a", border: "none", borderRadius: 10, padding: "14px 0", fontSize: 15, fontWeight: 800, cursor: "pointer", width: "100%" },
+  resetBtn:       { background: "#0d1829", border: "1px solid #1e3a5f", borderRadius: 8, padding: "8px 14px", color: "#94a3b8", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+  accountRow:     { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "12px 0", borderBottom: "1px solid #1e3a5f" },
+  accountTitle:   { color: "#f1f5f9", fontSize: 14, fontWeight: 700, margin: 0 },
+  accountHint:    { color: "#64748b", fontSize: 12, margin: "3px 0 0" },
+  neutralBtn:     { background: "#1e3a5f", color: "#f1f5f9", border: "1px solid #2d4a6f", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" },
+  dangerOutline:  { background: "transparent", color: "#fca5a5", border: "1px solid #ef444477", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" },
+  dangerBtn:      { background: "#dc2626", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" },
+  dirtyHint:      { color: "#f59e0b", fontSize: 13, fontWeight: 600 },
   saveBtnDisabled:{ opacity: 0.5, cursor: "not-allowed" },
 };

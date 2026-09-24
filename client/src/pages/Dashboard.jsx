@@ -5,6 +5,8 @@ import { api } from "../lib/api";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import logo from "../assets/logo.png";
 import AccountPanel from "../components/AccountPanel";
+import { Link } from "react-router-dom";
+import { confirmDialog, notify } from "../components/Dialog";
 
 export default function Dashboard() {
   const [userData, setUserData]   = useState(null);
@@ -36,10 +38,20 @@ export default function Dashboard() {
 
   async function toggleEA() {
     if (!uid || toggling) return;
+    if (userData?.ea_active) {
+      const ok = await confirmDialog({
+        title: "Arrêter le bot ?",
+        message: "Le bot ne prendra plus de nouveaux trades. Les positions déjà ouvertes chez Deriv iront jusqu'à leur échéance.",
+        confirmLabel: "Arrêter le bot",
+        danger: true,
+      });
+      if (!ok) return;
+    }
     setToggling(true); setEaError(null);
     try {
       const { ea_active } = await api.toggleEA();
       setUserData((d) => ({ ...d, ea_active }));
+      notify(ea_active ? "Bot activé" : "Bot arrêté");
     } catch (err) {
       setEaError(err.message);
     } finally {
@@ -77,12 +89,15 @@ export default function Dashboard() {
           </div>
         </div>
         <div style={s.topActions}>
-          {userData?.is_admin && <a href="/admin" style={s.settingsBtn}>🛡️ Admin</a>}
-          <a href="/messages" style={s.settingsBtn}>
+          {userData?.is_admin && <Link to="/admin" style={s.settingsBtn}>🛡️ Admin</Link>}
+          <Link to="/messages" style={s.settingsBtn}>
             💬 Messages{inbox.unread > 0 && <span style={s.badge}>{inbox.unread}</span>}
-          </a>
-          <a href="/settings" style={s.settingsBtn}>⚙️ Paramètres</a>
-          <button style={s.settingsBtn} onClick={() => auth.signOut()}>Déconnexion</button>
+          </Link>
+          <Link to="/settings" style={s.settingsBtn}>⚙️ Paramètres</Link>
+          <button style={s.settingsBtn} onClick={async () => {
+            const ok = await confirmDialog({ title: "Se déconnecter ?", message: "Le bot continue de trader même quand vous êtes déconnecté.", confirmLabel: "Se déconnecter" });
+            if (ok) await auth.signOut();
+          }}>Déconnexion</button>
           <button
             style={{ ...s.eaToggle, ...(eaActive ? s.eaOn : s.eaOff), ...(toggling ? { opacity: 0.6 } : {}) }}
             onClick={toggleEA} disabled={toggling}>
@@ -94,9 +109,9 @@ export default function Dashboard() {
       {eaError && <div style={s.eaError}>{eaError}</div>}
 
       {inbox.newAnnouncements > 0 && (
-        <a href="/messages?tab=annonces" style={s.annBanner}>
+        <Link to="/messages?tab=annonces" style={s.annBanner}>
           📢 {inbox.newAnnouncements > 1 ? `${inbox.newAnnouncements} nouvelles annonces` : "Nouvelle annonce"} de DrGold IA — cliquez pour lire
-        </a>
+        </Link>
       )}
 
       {userData && <AccountPanel user={userData} onChange={load} />}

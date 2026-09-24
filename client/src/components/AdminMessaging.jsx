@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { uploadFile, ACCEPT } from "../lib/upload";
 import { ui, fmtDate } from "../lib/ui";
 import Chat from "./Chat";
+import { confirmDialog, notify } from "./Dialog";
 
 export function AdminInbox({ startUid }) {
   const [data, setData]         = useState(null);
@@ -68,7 +69,10 @@ export function AdminInbox({ startUid }) {
           : (
             <>
               <h3 style={ui.h3}>💬 {thread.user?.email}</h3>
-              <Chat messages={thread.messages} mySide="admin" onSend={reply} uploads={data.uploads} emptyText="Aucun message" height={380} />
+              <Chat messages={thread.messages} mySide="admin" onSend={reply} uploads={data.uploads} emptyText="Aucun message — écrivez le premier" height={380}
+                canEdit={(m) => m.sender === "admin"} canDelete={() => true}
+                onEdit={async (id, body) => { await api.adminEditMessage(id, body); await loadThread(current); }}
+                onDelete={async (id) => { await api.adminDeleteMessage(id); await Promise.all([loadThread(current), loadList()]); }} />
             </>
           )}
       </div>
@@ -85,14 +89,53 @@ export function AdminAnnouncements() {
   const [file, setFile]         = useState(null);
   const [busy, setBusy]         = useState(false);
   const [msg, setMsg]           = useState(null);
+  const [editing, setEditing]   = useState(null); // { id, title, body, audience }
+  const [uploads, setUploads]   = useState(false);
 
   const load = useCallback(() => api.adminAnnouncements().then((r) => setList(r.announcements)).catch(() => setList([])), []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    api.inboxStatus().then((r) => setUploads(r.uploads)).catch(() => {});
+  }, [load]);
+
+  async function saveEdit() {
+    if (!editing.title.trim() || !editing.body.trim()) return;
+    try {
+      await api.adminEditAnnouncement(editing.id, editing);
+      setEditing(null);
+      notify("Annonce modifiée");
+      load();
+    } catch (err) {
+      notify(err.message, "error");
+    }
+  }
+
+  async function remove(a) {
+    const ok = await confirmDialog({
+      title: "Supprimer cette annonce ?",
+      message: `« ${a.title} » disparaîtra pour tous les traders. Les emails déjà envoyés ne peuvent pas être rappelés.`,
+      confirmLabel: "Supprimer",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api.adminDeleteAnnouncement(a.id);
+      notify("Annonce supprimée");
+      load();
+    } catch (err) {
+      notify(err.message, "error");
+    }
+  }
 
   async function publish() {
     if (!title.trim() || !body.trim()) return;
     const target = { all: "TOUS les traders", pro: "les abonnés Pro", basic: "les traders Basique" }[audience];
-    if (!window.confirm(`Publier cette annonce pour ${target}${sendEmail ? " et l'envoyer par email" : ""} ?`)) return;
+    const ok = await confirmDialog({
+      title: "Publier l'annonce ?",
+      message: `Elle sera visible par ${target}${sendEmail ? " et envoyée par email" : ""}.`,
+      confirmLabel: "Publier",
+    });
+    if (!ok) return;
     setBusy(true); setMsg(null);
     try {
       const attachment = file ? await uploadFile(file) : null;
@@ -126,9 +169,11 @@ export function AdminAnnouncements() {
           <label style={{ color: "#94a3b8", fontSize: 13, display: "flex", gap: 6, alignItems: "center" }}>
             <input type="checkbox" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} /> Envoyer aussi par email
           </label>
-          <label style={{ color: "#94a3b8", fontSize: 13 }}>
-            📎 <input type="file" accept={ACCEPT} onChange={(e) => setFile(e.target.files?.[0] || null)} style={{ color: "#94a3b8", fontSize: 12 }} />
-          </label>
+          {uploads && (
+            <label style={{ color: "#94a3b8", fontSize: 13 }}>
+              📎 <input type="file" accept={ACCEPT} onChange={(e) => setFile(e.target.files?.[0] || null)} style={{ color: "#94a3b8", fontSize: 12 }} />
+            </label>
+          )}
         </div>
         <button style={{ ...ui.btnGold, opacity: busy || !title.trim() || !body.trim() ? 0.5 : 1 }} disabled={busy || !title.trim() || !body.trim()} onClick={publish}>
           {busy ? "Publication…" : "Publier l'annonce"}
@@ -141,11 +186,39 @@ export function AdminAnnouncements() {
         <h3 style={ui.h3}>Historique</h3>
         {list === null ? <p style={ui.muted}>Chargement…</p> : list.length === 0 ? <p style={ui.muted}>Aucune annonce publiée</p> :
           list.map((a) => (
-            <div key={a.id} style={{ borderTop: "1px solid #1e3a5f", padding: "10px 0" }}>
-              <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: 14 }}>{a.title}</div>
-              <div style={{ color: "#64748b", fontSize: 11, marginTop: 2 }}>
-                {fmtDate(a.created_at)} · {{ all: "Tous", pro: "Pro", basic: "Basique" }[a.audience]} · {a.emails_sent} email(s){a.attachment_url ? " · 📎" : ""}
-              </div>
+            <div key={a.id} style={{ borderTop: "1px solid #1e3a5f", padding: "12px 0" }}>
+              {editing?.id === a.id ? (
+                <>
+                  <input style={{ ...ui.input, marginBottom: 8 }} value={editing.title} maxLength={150}
+                    onChange={(e) => setEditing({ ...editing, title: e.target.value })} />
+                  <textarea style={{ ...ui.input, minHeight: 90, fontFamily: "inherit", marginBottom: 8 }} value={editing.body}
+                    onChange={(e) => setEditing({ ...editing, body: e.target.value })} />
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <select value={editing.audience} onChange={(e) => setEditing({ ...editing, audience: e.target.value })}
+                      style={{ ...ui.input, width: "auto", padding: "6px 10px" }}>
+                      <option value="all">Tous les traders</option>
+                      <option value="pro">Abonnés Pro</option>
+                      <option value="basic">Basique (gratuit)</option>
+                    </select>
+                    <button style={ui.btnSm} onClick={() => setEditing(null)}>Annuler</button>
+                    <button style={{ ...ui.btnSm, background: "#f59e0b", color: "#060d1a", border: "1px solid #f59e0b" }} onClick={saveEdit}>Enregistrer</button>
+                  </div>
+                </>
+              ) : (
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: 14 }}>{a.title}</div>
+                    <div style={{ color: "#94a3b8", fontSize: 13, marginTop: 4, whiteSpace: "pre-wrap" }}>{a.body.length > 160 ? a.body.slice(0, 160) + "…" : a.body}</div>
+                    <div style={{ color: "#64748b", fontSize: 11, marginTop: 4 }}>
+                      {fmtDate(a.created_at)}{a.updated_at ? " · modifiée" : ""} · {{ all: "Tous", pro: "Pro", basic: "Basique" }[a.audience]} · {a.emails_sent} email(s){a.attachment_url ? " · 📎" : ""}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                    <button style={ui.btnSm} onClick={() => setEditing({ id: a.id, title: a.title, body: a.body, audience: a.audience })}>Modifier</button>
+                    <button style={ui.btnRed} onClick={() => remove(a)}>Supprimer</button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
       </div>

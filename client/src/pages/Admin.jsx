@@ -7,6 +7,8 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { ui, fmtXof, fmtDate } from "../lib/ui";
 import { AdminInbox, AdminAnnouncements } from "../components/AdminMessaging";
+import { confirmDialog, notify } from "../components/Dialog";
+import PageHeader from "../components/PageHeader";
 
 const FILTERS = [
   ["all", "Tous"],
@@ -48,14 +50,19 @@ export default function Admin() {
     return () => clearInterval(t);
   }, [load]);
 
-  async function act(uid, body, confirmText) {
-    if (confirmText && !window.confirm(confirmText)) return;
+  // confirm : texte simple, ou options completes de confirmDialog
+  async function act(uid, body, confirm, doneText = "Modification enregistrée") {
+    if (confirm) {
+      const opts = typeof confirm === "string" ? { title: confirm, confirmLabel: "Confirmer" } : confirm;
+      if (!(await confirmDialog(opts))) return;
+    }
     setBusy(uid);
     try {
-      await api.adminUpdate(uid, body);
+      await (body === "DELETE" ? api.adminDeleteUser(uid) : api.adminUpdate(uid, body));
       await load();
+      notify(doneText);
     } catch (err) {
-      alert(err.message);
+      notify(err.message, "error");
     } finally {
       setBusy(null);
     }
@@ -92,10 +99,7 @@ export default function Admin() {
 
   return (
     <div style={ui.page}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 20 }}>
-        <h1 style={{ color: "#f1f5f9", fontSize: 22, fontWeight: 800, margin: 0 }}>🛡️ Administration <span style={{ color: "#f59e0b" }}>DrGold IA</span></h1>
-        <button style={ui.btnDark} onClick={() => navigate("/dashboard")}>← Mon tableau de bord</button>
-      </div>
+      <PageHeader title="🛡️ Administration DrGold IA" subtitle="Traders, messages, annonces et paiements" />
 
       <div style={{ display: "flex", gap: 8, marginBottom: 18, borderBottom: "1px solid #1e3a5f", paddingBottom: 12 }}>
         {[["traders", "👥 Traders"], ["messages", "💬 Messages"], ["annonces", "📢 Annonces"]].map(([k, label]) => (
@@ -181,12 +185,20 @@ export default function Admin() {
                   <td style={{ ...st.td, whiteSpace: "nowrap" }}>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", maxWidth: 220 }}>
                       {u.approved
-                        ? <button style={ui.btnRed} disabled={busy === u.uid} onClick={() => act(u.uid, { approved: false }, `Suspendre ${u.email} ? Son bot sera arrêté.`)}>Suspendre</button>
-                        : <button style={{ ...ui.btnSm, background: "#166534", border: "1px solid #22c55e" }} disabled={busy === u.uid} onClick={() => act(u.uid, { approved: true })}>Réactiver</button>}
+                        ? <button style={ui.btnRed} disabled={busy === u.uid} onClick={() => act(u.uid, { approved: false }, { title: `Suspendre ${u.email} ?`, message: "Son bot sera arrêté et il ne pourra plus le relancer tant que vous ne l'aurez pas réactivé.", confirmLabel: "Suspendre", danger: true }, "Trader suspendu")}>Suspendre</button>
+                        : <button style={{ ...ui.btnSm, background: "#166534", border: "1px solid #22c55e" }} disabled={busy === u.uid} onClick={() => act(u.uid, { approved: true }, null, "Trader réactivé")}>Réactiver</button>}
                       <button style={ui.btnSm} onClick={() => { setChatUid(u.uid); setSection("messages"); }}>💬 Écrire</button>
-                      <button style={ui.btnSm} disabled={busy === u.uid} onClick={() => act(u.uid, { grantProDays: 30 }, `Offrir 30 jours de Pro à ${u.email} ?`)}>+30 j Pro</button>
-                      {u.pro_active && <button style={ui.btnRed} disabled={busy === u.uid} onClick={() => act(u.uid, { revokePro: true }, `Retirer le Pro de ${u.email} ? Il repassera en démo.`)}>Retirer Pro</button>}
-                      {u.ea_active && <button style={ui.btnRed} disabled={busy === u.uid} onClick={() => act(u.uid, { stopEA: true }, `Arrêter le bot de ${u.email} ?`)}>Stop bot</button>}
+                      <button style={ui.btnSm} disabled={busy === u.uid} onClick={() => act(u.uid, { grantProDays: 30 }, { title: `Offrir 30 jours de Pro à ${u.email} ?`, message: "Il pourra trader sur son compte réel pendant 30 jours de plus.", confirmLabel: "Offrir" }, "30 jours de Pro ajoutés")}>+30 j Pro</button>
+                      {u.pro_active && <button style={ui.btnRed} disabled={busy === u.uid} onClick={() => act(u.uid, { revokePro: true }, { title: `Retirer le Pro de ${u.email} ?`, message: "Il repassera en formule Basique et son bot retournera sur le compte démo.", confirmLabel: "Retirer", danger: true }, "Pro retiré")}>Retirer Pro</button>}
+                      {u.ea_active && <button style={ui.btnRed} disabled={busy === u.uid} onClick={() => act(u.uid, { stopEA: true }, { title: `Arrêter le bot de ${u.email} ?`, message: "Les positions déjà ouvertes chez Deriv iront jusqu'à leur échéance. Le trader pourra relancer son bot.", confirmLabel: "Arrêter", danger: true }, "Bot arrêté")}>Stop bot</button>}
+                      {!u.is_admin && (
+                        <button style={ui.btnRed} disabled={busy === u.uid}
+                          onClick={() => act(u.uid, "DELETE", {
+                            title: `Supprimer définitivement ${u.email} ?`,
+                            message: "Son compte, son historique de trades et ses messages seront effacés. Ses paiements restent dans la comptabilité. Cette action est irréversible.",
+                            confirmLabel: "Supprimer définitivement", danger: true, requireText: "SUPPRIMER",
+                          }, "Trader supprimé")}>🗑️ Supprimer</button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -205,7 +217,7 @@ export default function Admin() {
               {data.payments.map((p) => (
                 <tr key={p.id} style={{ borderBottom: "1px solid #0f2040" }}>
                   <td style={{ ...st.td, fontFamily: "monospace" }}>{p.id}</td>
-                  <td style={st.td}>{users.find((u) => u.uid === p.uid)?.email || p.uid}</td>
+                  <td style={st.td}>{users.find((u) => u.uid === p.uid)?.email || p.email || p.uid}{!users.find((u) => u.uid === p.uid) && <span style={st.sub}> (compte supprimé)</span>}</td>
                   <td style={st.td}>{fmtXof(p.amount)}</td>
                   <td style={st.td}>
                     {p.status === "paid" ? <span style={ui.badge("#14532d55", "#86efac")}>Payé</span>

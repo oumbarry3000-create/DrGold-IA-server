@@ -84,7 +84,7 @@ router.get("/api/announcements", requireAuth, async (req, res) => {
     const { rows: [u] } = await pool.query("SELECT plan, plan_expires_at FROM users WHERE uid = $1", [req.uid]);
     const audience = isProActive(u) ? ["all", "pro"] : ["all", "basic"];
     const { rows } = await pool.query(
-      "SELECT id, title, body, audience, attachment_url, attachment_name, attachment_type, created_at FROM announcements WHERE audience = ANY($1) ORDER BY created_at DESC LIMIT 50",
+      "SELECT id, title, body, audience, attachment_url, attachment_name, attachment_type, created_at, updated_at FROM announcements WHERE audience = ANY($1) ORDER BY created_at DESC LIMIT 50",
       [audience]
     );
     await pool.query("UPDATE users SET announcements_seen_at = now() WHERE uid = $1", [req.uid]);
@@ -190,6 +190,72 @@ router.post("/api/admin/announcements", requireAuth, requireAdmin, async (req, r
     console.error("announcement error:", err);
     res.status(500).json({ error: "Publication impossible" });
   }
+});
+
+// ─── Modification / suppression ──────────────────────────────────────────────
+
+const msgId = (req) => (/^d+$/.test(req.params.id) ? req.params.id : null);
+
+// PUT /api/messages/:id — le trader corrige SON message
+router.put("/api/messages/:id", requireAuth, async (req, res) => {
+  const body = String(req.body?.body || "").trim().slice(0, MAX_BODY);
+  if (!msgId(req) || !body) return res.status(400).json({ error: "Message vide" });
+  const { rows } = await pool.query(
+    "UPDATE messages SET body = $1, edited_at = now() WHERE id = $2 AND uid = $3 AND sender = 'client' RETURNING *",
+    [body, msgId(req), req.uid]
+  );
+  if (!rows[0]) return res.status(404).json({ error: "Message introuvable" });
+  res.json({ message: rows[0] });
+});
+
+// DELETE /api/messages/:id — le trader supprime SON message
+router.delete("/api/messages/:id", requireAuth, async (req, res) => {
+  if (!msgId(req)) return res.status(400).json({ error: "id invalide" });
+  const { rowCount } = await pool.query("DELETE FROM messages WHERE id = $1 AND uid = $2 AND sender = 'client'", [msgId(req), req.uid]);
+  if (!rowCount) return res.status(404).json({ error: "Message introuvable" });
+  res.json({ status: "ok" });
+});
+
+// PUT /api/admin/messages/:id — l'admin corrige une de SES reponses
+router.put("/api/admin/messages/:id", requireAuth, requireAdmin, async (req, res) => {
+  const body = String(req.body?.body || "").trim().slice(0, MAX_BODY);
+  if (!msgId(req) || !body) return res.status(400).json({ error: "Message vide" });
+  const { rows } = await pool.query(
+    "UPDATE messages SET body = $1, edited_at = now() WHERE id = $2 AND sender = 'admin' RETURNING *",
+    [body, msgId(req)]
+  );
+  if (!rows[0]) return res.status(404).json({ error: "Message introuvable" });
+  res.json({ message: rows[0] });
+});
+
+// DELETE /api/admin/messages/:id — moderation : l'admin peut supprimer tout message
+router.delete("/api/admin/messages/:id", requireAuth, requireAdmin, async (req, res) => {
+  if (!msgId(req)) return res.status(400).json({ error: "id invalide" });
+  const { rowCount } = await pool.query("DELETE FROM messages WHERE id = $1", [msgId(req)]);
+  if (!rowCount) return res.status(404).json({ error: "Message introuvable" });
+  res.json({ status: "ok" });
+});
+
+// PUT /api/admin/announcements/:id — modifier une annonce (pas de nouvel email)
+router.put("/api/admin/announcements/:id", requireAuth, requireAdmin, async (req, res) => {
+  const title    = String(req.body?.title || "").trim().slice(0, 150);
+  const body     = String(req.body?.body || "").trim().slice(0, MAX_BODY);
+  const audience = ["all", "pro", "basic"].includes(req.body?.audience) ? req.body.audience : "all";
+  if (!msgId(req) || !title || !body) return res.status(400).json({ error: "Titre et texte requis" });
+  const { rows } = await pool.query(
+    "UPDATE announcements SET title = $1, body = $2, audience = $3, updated_at = now() WHERE id = $4 RETURNING *",
+    [title, body, audience, msgId(req)]
+  );
+  if (!rows[0]) return res.status(404).json({ error: "Annonce introuvable" });
+  res.json({ announcement: rows[0] });
+});
+
+// DELETE /api/admin/announcements/:id
+router.delete("/api/admin/announcements/:id", requireAuth, requireAdmin, async (req, res) => {
+  if (!msgId(req)) return res.status(400).json({ error: "id invalide" });
+  const { rowCount } = await pool.query("DELETE FROM announcements WHERE id = $1", [msgId(req)]);
+  if (!rowCount) return res.status(404).json({ error: "Annonce introuvable" });
+  res.json({ status: "ok" });
 });
 
 module.exports = router;

@@ -7,6 +7,7 @@ const { pool, isProActive, effectiveAccountType } = require("./db");
 const { requireAuth } = require("./auth");
 const { listAccounts, exchangeOAuthCode } = require("./derivApi");
 const cinetpay = require("./cinetpay");
+const firebaseAdmin = require("firebase-admin");
 
 const ENCRYPTION_KEY = Buffer.from(process.env.ENCRYPTION_KEY, "hex"); // 32 bytes hex
 const IV_LENGTH = 16;
@@ -289,6 +290,53 @@ router.post("/api/ea/toggle", requireAuth, async (req, res) => {
   }
 });
 
+// Supprime un compte : bot coupe (le moteur le retire au prochain passage),
+// trades et messages effaces, paiements conserves (comptabilite), compte
+// Firebase supprime.
+async function deleteAccount(uid) {
+  await pool.query("UPDATE users SET ea_active = false WHERE uid = $1", [uid]);
+  await pool.query("DELETE FROM messages WHERE uid = $1", [uid]);
+  await pool.query("DELETE FROM trades WHERE uid = $1", [uid]);
+  await pool.query("DELETE FROM users WHERE uid = $1", [uid]);
+  try {
+    await firebaseAdmin.auth().deleteUser(uid);
+  } catch (err) {
+    if (err.code !== "auth/user-not-found") console.error("firebase deleteUser:", err.message);
+  }
+}
+
+// DELETE /api/me — le trader supprime son compte (confirmation "SUPPRIMER")
+router.delete("/api/me", requireAuth, async (req, res) => {
+  try {
+    if (req.body?.confirm !== "SUPPRIMER") return res.status(400).json({ error: "Confirmation manquante" });
+    if (isAdminEmail(req.email)) return res.status(403).json({ error: "Le compte administrateur ne peut pas être supprimé ici" });
+    await deleteAccount(req.uid);
+    console.log(`🗑️ Compte supprime par son titulaire : ${req.email}`);
+    res.json({ status: "ok" });
+  } catch (err) {
+    console.error("delete me error:", err);
+    res.status(500).json({ error: "Suppression impossible" });
+  }
+});
+
+// POST /api/deriv/unlink — le trader deconnecte son compte Deriv
+router.post("/api/deriv/unlink", requireAuth, async (req, res) => {
+  try {
+    await pool.query(
+      `UPDATE users SET ea_active = false, token_encrypted = NULL, token_saved_at = NULL,
+         oauth_access_encrypted = NULL, oauth_refresh_encrypted = NULL, oauth_expires_at = NULL,
+         deriv_accounts = NULL, deriv_connected = false, deriv_reauth_needed = false, deriv_loginid = NULL,
+         deriv_balance = NULL
+       WHERE uid = $1`,
+      [req.uid]
+    );
+    res.json({ status: "ok" });
+  } catch (err) {
+    console.error("unlink error:", err);
+    res.status(500).json({ error: "Déconnexion impossible" });
+  }
+});
+
 // ─── Paiement formule Pro (CinetPay) ─────────────────────────────────────────
 
 async function applyPayment(paymentId) {
@@ -325,8 +373,8 @@ router.post("/api/payment/checkout", requireAuth, async (req, res) => {
     await ensureUser(req.uid, req.email);
     const id = "DG" + Date.now().toString(36).toUpperCase() + crypto.randomBytes(3).toString("hex").toUpperCase();
     await pool.query(
-      "INSERT INTO payments (id, uid, amount, days) VALUES ($1, $2, $3, $4)",
-      [id, req.uid, PRO_PRICE_XOF, PRO_DAYS]
+      "INSERT INTO payments (id, uid, amount, days, email) VALUES ($1, $2, $3, $4, $5)",
+      [id, req.uid, PRO_PRICE_XOF, PRO_DAYS, req.email]
     );
     const checkoutUrl = await cinetpay.createCheckout({
       amount: PRO_PRICE_XOF,
@@ -403,7 +451,7 @@ router.get("/api/admin/users", requireAuth, requireAdmin, async (req, res) => {
     // Checkout ouvert puis abandonne : on le classe "expire" apres 2 h
     await pool.query("UPDATE payments SET status = 'expired' WHERE status = 'pending' AND created_at < now() - interval '2 hours'");
     const payments = await pool.query(
-      "SELECT id, uid, amount, status, created_at, paid_at FROM payments ORDER BY created_at DESC LIMIT 100"
+      "SELECT id, uid, email, amount, status, created_at, paid_at FROM payments ORDER BY created_at DESC LIMIT 100"
     );
     res.json({ users, payments: payments.rows });
   } catch (err) {
@@ -448,6 +496,21 @@ async function approveAdmins() {
   const admins = await pool.query("SELECT email, approved FROM users WHERE lower(email) = ANY($1)", [ADMIN_EMAILS]);
   console.log(`👤 Admins (${ADMIN_EMAILS.join(",")}) : ${admins.rows.length} en base, ${r.rowCount} valide(s) au demarrage`);
 }
+
+// DELETE /api/admin/users/:uid — supprimer un trader (pas un admin)
+router.delete("/api/admin/users/:uid", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query("SELECT email FROM users WHERE uid = $1", [req.params.uid]);
+    if (!rows[0]) return res.status(404).json({ error: "trader introuvable" });
+    if (isAdminEmail(rows[0].email)) return res.status(403).json({ error: "Impossible de supprimer un administrateur" });
+    await deleteAccount(req.params.uid);
+    console.log(`[admin ${req.email}] 🗑️ trader supprime : ${rows[0].email}`);
+    res.json({ status: "ok" });
+  } catch (err) {
+    console.error("admin delete error:", err);
+    res.status(500).json({ error: "Suppression impossible" });
+  }
+});
 
 module.exports = router;
 module.exports.decrypt = decrypt;

@@ -8,6 +8,7 @@ import Admin     from "./pages/Admin";
 import Payment   from "./pages/Payment";
 import DerivCallback from "./pages/DerivCallback";
 import Messages  from "./pages/Messages";
+import { DialogHost } from "./components/Dialog";
 
 function PrivateRoute({ children }) {
   const { user } = useAuth();
@@ -18,6 +19,7 @@ function PrivateRoute({ children }) {
 export default function App() {
   return (
     <BrowserRouter>
+      <DialogHost />
       <Routes>
         <Route path="/login"     element={<Login />} />
         <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
