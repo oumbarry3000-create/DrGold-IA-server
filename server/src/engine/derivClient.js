@@ -10,6 +10,7 @@ const { sendTelegram }           = require("../strategy/telegram");
 const DERIV_API    = "https://api.derivws.com/trading/v1/options";
 const DERIV_APP_ID = process.env.DERIV_APP_ID;
 const SYMBOL       = "frxXAUUSD";
+const MIN_STAKE    = 0.5; // mise minimale Deriv (USD)
 const TIMEFRAME    = 60; // 1 minute candles
 
 class DerivClient {
@@ -296,21 +297,23 @@ class DerivClient {
     // Sur Deriv, les contrats digitaux ont une durée
     // Pour XAUUSD on utilise des contrats Rise/Fall avec durée 5 ticks ou time-based
     // Pour MVP : contrat CALL/PUT durée 1 heure
+    // Mise = lots x 10 USD, avec le minimum Deriv de 0.50 USD
+    const stake = Math.max(MIN_STAKE, Math.round(lots * 10 * 100) / 100);
     this._send({
       buy: 1,
-      price: lots * 10, // montant en USD approximatif
+      price: stake,
       parameters: {
-        amount: lots * 10,
+        amount: stake,
         basis: "stake",
         contract_type: contractType,
         currency: "USD",
         duration: 1,
         duration_unit: "h",
-        symbol: SYMBOL,
+        underlying_symbol: SYMBOL, // nouvelle API : "symbol" n est plus accepte
       },
     });
 
-    console.log(`[${this.uid}] Order ${direction} | lots=${lots} | level=${this.gridLevel}`);
+    console.log(`[${this.uid}] Order ${direction} | lots=${lots} | mise=${stake}$ | level=${this.gridLevel}`);
   }
 
   _onBuy(msg) {
