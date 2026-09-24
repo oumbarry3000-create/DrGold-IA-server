@@ -8,6 +8,7 @@ const { requireAuth } = require("./auth");
 const { listAccounts, exchangeOAuthCode } = require("./derivApi");
 const cinetpay = require("./cinetpay");
 const firebaseAdmin = require("firebase-admin");
+const { notify } = require("./notifications");
 
 const ENCRYPTION_KEY = Buffer.from(process.env.ENCRYPTION_KEY, "hex"); // 32 bytes hex
 const IV_LENGTH = 16;
@@ -252,6 +253,102 @@ router.put("/api/deriv-token", requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/stats?days=30 — statistiques sur TOUS les trades + courbe journaliere
+router.get("/api/stats", requireAuth, async (req, res) => {
+  try {
+    const days = req.query.days === "all" ? null : Math.min(Math.max(Number(req.query.days) || 30, 1), 3650);
+    const { rows: [t] } = await pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE status = 'closed')                        AS closed,
+         COUNT(*) FILTER (WHERE status = 'closed' AND pnl > 0)            AS wins,
+         COUNT(*) FILTER (WHERE status = 'closed' AND pnl <= 0)           AS losses,
+         COUNT(*) FILTER (WHERE status = 'open')                          AS open,
+         COALESCE(SUM(pnl) FILTER (WHERE status = 'closed'), 0)           AS pnl,
+         COALESCE(SUM(pnl) FILTER (WHERE status = 'closed' AND pnl > 0), 0) AS gains,
+         COALESCE(-SUM(pnl) FILTER (WHERE status = 'closed' AND pnl < 0), 0) AS loss_sum,
+         COALESCE(MAX(pnl) FILTER (WHERE status = 'closed'), 0)           AS best,
+         COALESCE(MIN(pnl) FILTER (WHERE status = 'closed'), 0)           AS worst,
+         COALESCE(SUM(pnl) FILTER (WHERE status = 'closed' AND closed_at >= date_trunc('day', now())), 0) AS pnl_today,
+         COUNT(*) FILTER (WHERE status = 'closed' AND direction = 'BUY')  AS buys,
+         COUNT(*) FILTER (WHERE status = 'closed' AND direction = 'BUY' AND pnl > 0) AS buy_wins,
+         COUNT(*) FILTER (WHERE status = 'closed' AND direction = 'SELL') AS sells,
+         COUNT(*) FILTER (WHERE status = 'closed' AND direction = 'SELL' AND pnl > 0) AS sell_wins
+       FROM trades WHERE uid = $1`,
+      [req.uid]
+    );
+    const { rows: series } = await pool.query(
+      `SELECT to_char(date_trunc('day', closed_at), 'YYYY-MM-DD') AS day, SUM(pnl) AS pnl, COUNT(*) AS trades
+       FROM trades WHERE uid = $1 AND status = 'closed' AND ($2::int IS NULL OR closed_at >= now() - make_interval(days => $2::int))
+       GROUP BY 1 ORDER BY 1`,
+      [req.uid, days]
+    );
+    const stats = Object.fromEntries(Object.entries(t).map(([k, v]) => [k, Number(v)]));
+    stats.win_rate = stats.closed ? (stats.wins / stats.closed) * 100 : 0;
+    let cum = 0;
+    res.json({ stats, series: series.map((r) => { cum += Number(r.pnl); return { day: r.day, pnl: Number(r.pnl), trades: Number(r.trades), cumulative: Math.round(cum * 100) / 100 }; }) });
+  } catch (err) {
+    console.error("stats error:", err);
+    res.status(500).json({ error: "Erreur statistiques" });
+  }
+});
+
+// GET /api/trades?status=closed|open&limit=50&offset=0 — historique pagine
+router.get("/api/trades", requireAuth, async (req, res) => {
+  try {
+    const status = ["open", "closed"].includes(req.query.status) ? req.query.status : null;
+    const limit  = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    const { rows } = await pool.query(
+      `SELECT contract_id, symbol, direction, lots, entry, exit, pnl, status, grid_level, opened_at, closed_at, account_id
+       FROM trades WHERE uid = $1 AND ($2::text IS NULL OR status = $2)
+       ORDER BY COALESCE(closed_at, opened_at) DESC LIMIT $3 OFFSET $4`,
+      [req.uid, status, limit, offset]
+    );
+    const { rows: [c] } = await pool.query("SELECT COUNT(*) AS n FROM trades WHERE uid = $1 AND ($2::text IS NULL OR status = $2)", [req.uid, status]);
+    res.json({ trades: rows.map((r) => numify(r, ["lots", "entry", "exit", "pnl"])), total: Number(c.n) });
+  } catch (err) {
+    console.error("trades error:", err);
+    res.status(500).json({ error: "Erreur historique" });
+  }
+});
+
+// GET /api/positions/live — positions ouvertes + prix actuel / P&L en cours (Deriv)
+router.get("/api/positions/live", requireAuth, async (req, res) => {
+  try {
+    const { getLiveContracts } = require("./engine/manager");
+    const live = getLiveContracts(req.uid);
+    const { rows } = await pool.query(
+      `SELECT contract_id, symbol, direction, lots, entry, grid_level, opened_at, account_id
+       FROM trades WHERE uid = $1 AND status = 'open' ORDER BY opened_at DESC`,
+      [req.uid]
+    );
+    const positions = rows.map((r) => {
+      const l = live.contracts[r.contract_id] || {};
+      return {
+        ...numify(r, ["lots", "entry"]),
+        stake:        l.buy_price ?? Math.max(0.5, Number(r.lots) * 10),
+        entry_spot:   l.entry_spot ?? null,
+        current_spot: l.current_spot ?? null,
+        profit:       l.profit ?? null,
+        payout:       l.payout ?? null,
+        expires_at:   l.date_expiry ? new Date(l.date_expiry * 1000).toISOString() : new Date(new Date(r.opened_at).getTime() + 3600000).toISOString(),
+        live:         !!l.updated_at,
+      };
+    });
+    res.json({ connected: live.connected, positions });
+  } catch (err) {
+    console.error("positions live error:", err);
+    res.status(500).json({ error: "Erreur positions" });
+  }
+});
+
+// PUT /api/profile — nom affiche
+router.put("/api/profile", requireAuth, async (req, res) => {
+  const name = String(req.body?.display_name || "").trim().slice(0, 60);
+  await pool.query("UPDATE users SET display_name = $1 WHERE uid = $2", [name || null, req.uid]);
+  res.json({ display_name: name || null });
+});
+
 // PUT /api/account-type — demo / reel (reel = formule Pro active)
 router.put("/api/account-type", requireAuth, async (req, res) => {
   try {
@@ -287,7 +384,11 @@ router.post("/api/ea/toggle", requireAuth, async (req, res) => {
       "UPDATE users SET ea_active = NOT ea_active WHERE uid = $1 RETURNING ea_active",
       [req.uid]
     );
-    res.json({ ea_active: result.rows[0].ea_active });
+    const on = result.rows[0].ea_active;
+    notify(req.uid, { category: "bot", level: on ? "success" : "warning",
+      title: on ? "Bot activé" : "Bot en pause",
+      body: on ? "TrendRider est actif : il prendra les prochains signaux sur XAUUSD." : "TrendRider a été mis en pause. Les positions déjà ouvertes vont jusqu'à leur échéance." });
+    res.json({ ea_active: on });
   } catch (err) {
     console.error("toggle error:", err);
     res.status(500).json({ error: "Erreur bascule EA" });
@@ -367,6 +468,8 @@ async function applyPayment(paymentId) {
       [payment.days, payment.uid]
     );
     console.log(`💰 Paiement ${paymentId} confirme : Pro +${payment.days} j pour ${payment.uid}`);
+    notify(payment.uid, { category: "compte", level: "success", title: "Formule Pro activée",
+      body: `Paiement confirmé : ${payment.days} jours de Pro ajoutés. Le compte réel est débloqué.` });
   }
   return upd.rows[0] || payment;
 }

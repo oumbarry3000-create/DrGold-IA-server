@@ -6,6 +6,7 @@ const { pool, effectiveAccountType } = require("../db");
 const DerivClient  = require("./derivClient");
 const { decrypt }  = require("../routes");
 const { sendTelegram } = require("../strategy/telegram");
+const { notify }       = require("../notifications");
 
 // Map uid -> DerivClient actif
 const activeClients = new Map();
@@ -80,9 +81,17 @@ async function enforceDailyLossLimits() {
   for (const row of rows) {
     const limit = Number(row.params?.dailyLossLimit || 0);
     const pnl   = Number(row.pnl_today || 0);
+    // Alerte a 80 % de la limite (une fois par jour)
+    if (limit > 0 && pnl <= -0.8 * limit && pnl > -limit) {
+      notify(row.uid, { category: "trading", level: "warning", title: "Risque : limite de perte proche",
+        body: `Pertes du jour : ${pnl.toFixed(2)} $ sur une limite de ${limit} $. Le bot s'arrêtera automatiquement à la limite.`,
+        dedupeKey: `risk80-${new Date().toISOString().slice(0, 10)}`, dedupeMinutes: 1440 });
+    }
     if (limit > 0 && pnl <= -limit) {
       await pool.query("UPDATE users SET ea_active = false WHERE uid = $1", [row.uid]);
       console.log(`[${row.uid}] 🛑 Limite de perte du jour atteinte (${pnl.toFixed(2)} $ / -${limit} $) : EA coupe`);
+      notify(row.uid, { category: "bot", level: "danger", title: "Bot arrêté : limite de perte atteinte",
+        body: `Pertes du jour : ${pnl.toFixed(2)} $ (limite ${limit} $). Réactivez le bot demain depuis le tableau de bord.` });
       const p = row.params || {};
       sendTelegram(p.tgBotToken, p.tgChatID,
         `🛑 <b>Tradify arrêté</b>\nLimite de perte du jour atteinte : ${pnl.toFixed(2)} $ (limite ${limit} $).\nRéactivez l'EA demain depuis le tableau de bord.`,
@@ -119,4 +128,10 @@ function deactivateUser(uid) {
   }
 }
 
-module.exports = { startEAEngine };
+// Etat live (prix actuel, P&L en cours) des contrats ouverts d'un trader
+function getLiveContracts(uid) {
+  const client = activeClients.get(uid);
+  return client ? { connected: !!client.authorized, accountId: client.accountId || null, contracts: client.live || {} } : { connected: false, accountId: null, contracts: {} };
+}
+
+module.exports = { startEAEngine, getLiveContracts };

@@ -39,7 +39,8 @@ router.get("/api/inbox/status", requireAuth, async (req, res) => {
          (SELECT COUNT(*) FROM announcements WHERE audience = ANY($2) AND created_at > COALESCE($3, 'epoch'::timestamptz)) AS new_announcements`,
       [req.uid, audience, u.announcements_seen_at]
     );
-    res.json({ unread: Number(c.unread), newAnnouncements: Number(c.new_announcements), uploads: uploadsEnabled() });
+    const { rows: [n] } = await pool.query("SELECT COUNT(*) AS unread FROM notifications WHERE uid = $1 AND NOT read", [req.uid]);
+    res.json({ unread: Number(c.unread), newAnnouncements: Number(c.new_announcements), unreadNotifications: Number(n.unread), uploads: uploadsEnabled() });
   } catch (err) {
     console.error("inbox status error:", err);
     res.status(500).json({ error: "Erreur messagerie" });

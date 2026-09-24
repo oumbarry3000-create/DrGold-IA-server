@@ -109,6 +109,21 @@ UPDATE payments p SET email = u.email FROM users u WHERE p.uid = u.uid AND p.ema
 -- Prix Pro en dollars, paye en FCFA : on garde le prix USD et le taux utilise
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS amount_usd NUMERIC;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS fx_rate NUMERIC;
+
+-- Notifications automatiques du bot + nom affiche du profil
+CREATE TABLE IF NOT EXISTS notifications (
+  id BIGSERIAL PRIMARY KEY,
+  uid TEXT NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+  category TEXT NOT NULL,
+  level TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL DEFAULT '',
+  dedupe_key TEXT,
+  read BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_uid ON notifications(uid, created_at DESC);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;
 `;
 
 async function initDb() {

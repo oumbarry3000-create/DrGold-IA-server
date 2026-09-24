@@ -4,6 +4,7 @@ const { pool }                   = require("../db");
 const { getSignal, calcGridLot } = require("../strategy/trendRider");
 const { sendTelegram }           = require("../strategy/telegram");
 const { refreshOAuth }           = require("../derivApi");
+const { notify }                 = require("../notifications");
 
 // Nouvelle API Deriv (tokens "pat_...") : l'ancien WS ws.binaryws.com renvoie
 // 520. Flux : REST (Bearer PAT + Deriv-App-ID) -> liste des comptes -> OTP ->
@@ -28,6 +29,7 @@ class DerivClient {
     this.gridLevel   = 0;
     this.signalLocked= false;   // anti double-signal par bougie
     this.running     = true;
+    this.live        = {};      // contract_id -> etat live Deriv (prix actuel, P&L en cours, expiration)
 
     // Stats session
     this.sessionStart = Date.now();
@@ -79,6 +81,9 @@ class DerivClient {
     this.running = false;
     await pool.query("UPDATE users SET deriv_reauth_needed = true, deriv_connected = false WHERE uid = $1", [this.uid]).catch(() => {});
     this._tg("⚠️ <b>Tradify en pause</b>\nVotre connexion Deriv a expiré. Ouvrez l'application et cliquez sur « Reconnecter Deriv ».");
+    notify(this.uid, { category: "compte", level: "danger", title: "Reconnexion Deriv requise",
+      body: "Votre connexion Deriv a expiré : le bot est en pause. Cliquez sur « Reconnecter Deriv » sur le tableau de bord.",
+      dedupeKey: "reauth", dedupeMinutes: 720 });
     throw new Error("connexion Deriv expiree (reconnexion requise)");
   }
 
@@ -181,6 +186,9 @@ class DerivClient {
           this.authorized = true;
           const loginid = msg.balance.loginid || this.accountId;
           console.log(`[${this.uid}] Connecté Deriv: ${loginid} | solde ${msg.balance.balance} ${msg.balance.currency || ""}`);
+          notify(this.uid, { category: "bot", level: "success", title: "Bot connecté",
+            body: `Votre compte Deriv ${loginid} est connecté. Solde : ${Number(msg.balance.balance).toFixed(2)} ${msg.balance.currency || "USD"}.`,
+            dedupeKey: `connected-${loginid}`, dedupeMinutes: 360 });
           this._updateUserDoc({
             deriv_balance:   msg.balance.balance,
             deriv_loginid:   loginid,
@@ -315,7 +323,19 @@ class DerivClient {
       pool.query("UPDATE trades SET entry = $1 WHERE contract_id = $2 AND status = 'open'", [Number(poc.entry_spot), id]).catch(() => {});
     }
     const closed = poc.is_sold === 1 || poc.is_sold === true || ["won", "lost", "sold"].includes(poc.status);
-    if (!closed) return;
+    if (!closed) {
+      this.live[id] = {
+        current_spot: poc.current_spot != null ? Number(poc.current_spot) : null,
+        entry_spot:   poc.entry_spot != null ? Number(poc.entry_spot) : null,
+        profit:       poc.profit != null ? Number(poc.profit) : null,
+        buy_price:    poc.buy_price != null ? Number(poc.buy_price) : null,
+        payout:       poc.payout != null ? Number(poc.payout) : null,
+        date_expiry:  poc.date_expiry || null,
+        updated_at:   Date.now(),
+      };
+      return;
+    }
+    delete this.live[id];
 
     const profit = Number(poc.profit ?? (Number(poc.sell_price || 0) - Number(poc.buy_price || 0)));
     const exit   = Number(poc.exit_spot ?? poc.exit_tick ?? poc.sell_spot ?? poc.current_spot ?? 0);
@@ -334,6 +354,9 @@ class DerivClient {
       this.signalLocked = false;
     }
     console.log(`[${this.uid}] Trade ${id} fermé : ${profit >= 0 ? "+" : ""}${profit.toFixed(2)} $`);
+    notify(this.uid, { category: "trading", level: profit >= 0 ? "success" : "danger",
+      title: profit >= 0 ? "Trade gagné" : "Trade perdu",
+      body: `${rows[0].direction} ${SYMBOL.replace("frx", "")} : ${profit >= 0 ? "+" : ""}${profit.toFixed(2)} $` });
     const won = profit >= 0;
     this._tg(
       `${won ? "✅" : "❌"} <b>Trade ${won ? "gagné" : "perdu"}</b>\n` +
