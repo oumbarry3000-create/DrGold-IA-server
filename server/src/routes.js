@@ -99,8 +99,15 @@ function numify(row, keys) {
 // onSnapshot Firestore ; le client fait du polling sur cette route)
 router.get("/api/me", requireAuth, async (req, res) => {
   try {
+    // Comptes Firebase crees avant la migration Postgres : pas encore de
+    // ligne en base -> on la cree avec les parametres par defaut.
+    await pool.query(
+      `INSERT INTO users (uid, email, ea_active, params)
+       VALUES ($1, $2, false, $3)
+       ON CONFLICT (uid) DO NOTHING`,
+      [req.uid, req.email, JSON.stringify(DEFAULT_EA_PARAMS)]
+    );
     const userResult = await pool.query("SELECT * FROM users WHERE uid = $1", [req.uid]);
-    if (userResult.rows.length === 0) return res.status(404).json({ error: "utilisateur introuvable" });
 
     const tradesResult = await pool.query(
       "SELECT * FROM trades WHERE uid = $1 ORDER BY opened_at DESC LIMIT 50",
@@ -137,7 +144,12 @@ router.put("/api/deriv-token", requireAuth, async (req, res) => {
   try {
     const { token } = req.body;
     if (!token) return res.status(400).json({ error: "token requis" });
-    await pool.query("UPDATE users SET token_encrypted = $1 WHERE uid = $2", [encrypt(token), req.uid]);
+    await pool.query(
+      `INSERT INTO users (uid, email, token_encrypted, ea_active, params)
+       VALUES ($1, $2, $3, false, $4)
+       ON CONFLICT (uid) DO UPDATE SET token_encrypted = EXCLUDED.token_encrypted`,
+      [req.uid, req.email, encrypt(token), JSON.stringify(DEFAULT_EA_PARAMS)]
+    );
     res.json({ status: "ok" });
   } catch (err) {
     console.error("deriv-token error:", err);
