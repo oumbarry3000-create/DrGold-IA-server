@@ -8,8 +8,7 @@ export default function Login() {
   const [mode, setMode]             = useState("login");
   const [email, setEmail]           = useState("");
   const [password, setPassword]     = useState("");
-  const [derivToken, setDerivToken] = useState("");
-  const [showHelp, setShowHelp]     = useState(false);
+  const [acceptRisk, setAcceptRisk] = useState(false);
   const { login, register, resetPassword, loading, error } = useAuth();
   const [resetSent, setResetSent] = useState(false);
 
@@ -21,13 +20,13 @@ export default function Login() {
 
   async function handleSubmit() {
     if (!email || !password) return;
-    if (mode === "register" && !derivToken) {
-      alert("Token Deriv requis à l'inscription");
+    if (mode === "register" && !acceptRisk) {
+      alert("Vous devez accepter les risques du trading pour créer un compte");
       return;
     }
     try {
-      if (mode === "register") await register(email, password, derivToken);
-      else await login(email, password, derivToken || null);
+      if (mode === "register") await register(email, password);
+      else await login(email, password);
       navigate("/dashboard");
     } catch (_) {}
   }
@@ -63,29 +62,15 @@ export default function Login() {
               onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
           </Field>
 
-          <Field label={
-            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              Token Deriv API
-              {mode === "login" && <span style={s.optional}>(optionnel)</span>}
-              <button style={s.helpBtn} onClick={() => setShowHelp(!showHelp)}>?</button>
-            </span>
-          }>
-            <input style={s.input} type="text" value={derivToken}
-              onChange={(e) => setDerivToken(e.target.value)}
-              placeholder="Coller votre token Deriv ici" />
-            {showHelp && (
-              <div style={s.helpBox}>
-                <p style={s.helpText}>
-                  Obtenez votre token sur{" "}
-                  <a href="https://app.deriv.com/account/api-token" target="_blank"
-                    rel="noreferrer" style={s.link}>
-                    app.deriv.com → API Token
-                  </a>
-                  <br />Accès requis : <strong>Trade</strong> + <strong>Read</strong>
-                </p>
-              </div>
-            )}
-          </Field>
+          {mode === "register" && (
+            <label style={s.riskBox}>
+              <input type="checkbox" checked={acceptRisk} onChange={(e) => setAcceptRisk(e.target.checked)} style={{ marginTop: 2 }} />
+              <span>
+                Je comprends que le trading comporte un <strong>risque élevé de perte</strong>, que les performances
+                passées ne garantissent pas les résultats futurs, et que je peux perdre tout ou partie de mon capital.
+              </span>
+            </label>
+          )}
 
           {error && <div style={s.errorBox}>{error}</div>}
 
@@ -129,6 +114,7 @@ const s = {
   link:        { color: "#f59e0b" },
   linkBtn:     { background: "none", border: "none", color: "#f59e0b", fontSize: 13, cursor: "pointer", alignSelf: "center" },
   resetInfo:   { color: "#86efac", fontSize: 13, textAlign: "center", margin: 0 },
+  riskBox:     { display: "flex", gap: 10, alignItems: "flex-start", color: "#94a3b8", fontSize: 12, lineHeight: 1.6, cursor: "pointer" },
   errorBox:    { background: "#7f1d1d33", border: "1px solid #ef444455", borderRadius: 8, padding: "10px 14px", color: "#fca5a5", fontSize: 13 },
   btn:         { background: "linear-gradient(135deg, #f59e0b, #d97706)", color: "#060d1a", border: "none", borderRadius: 10, padding: "13px 0", fontSize: 15, fontWeight: 800, cursor: "pointer", width: "100%", letterSpacing: "0.3px" },
   btnDisabled: { opacity: 0.5, cursor: "not-allowed" },

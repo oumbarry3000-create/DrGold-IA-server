@@ -18,6 +18,7 @@ export const DEFAULT_EA_PARAMS = {
   globalTPMoney:    5.0,
   globalSLMoney:    15.0,
   breakEvenMoney:   1.0,
+  dailyLossLimit:   20,               // USD, 0 = désactivé : le bot s'arrête pour la journée
 
   // Filtres Daily
   useDailyFilters:  true,

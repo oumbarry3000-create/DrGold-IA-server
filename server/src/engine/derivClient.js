@@ -71,6 +71,11 @@ class DerivClient {
       console.log(`[${this.uid}] Comptes Deriv:`, JSON.stringify(accounts.map((a) => {
         const { balance, ...rest } = a; return rest;
       })).slice(0, 400));
+      // Comptes lies par token (sans OAuth) : on memorise la liste pour l'admin
+      pool.query(
+        "UPDATE users SET deriv_accounts = $1 WHERE uid = $2 AND deriv_accounts IS NULL",
+        [JSON.stringify(accounts.map((a) => ({ account_id: a.account_id, account_type: a.account_type, currency: a.currency || null }))), this.uid]
+      ).catch(() => {});
       const account = this._pickAccount(accounts);
       if (!account) throw new Error(`aucun compte ${this.params.derivAccountType === "real" ? "reel" : "demo"} trouve`);
       this.accountId = account.account_id || account.accountId || account.loginid || account.id;
@@ -334,9 +339,9 @@ class DerivClient {
 
     // Écrire dans Postgres (Neon)
     pool.query(
-      `INSERT INTO trades (contract_id, uid, symbol, direction, lots, entry, exit, pnl, status, grid_level, opened_at, closed_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NULL, NULL, 'open', $7, now(), NULL)`,
-      [String(contract.contract_id), this.uid, SYMBOL, direction, lots, contract.buy_price, this.gridLevel - 1]
+      `INSERT INTO trades (contract_id, uid, symbol, direction, lots, entry, exit, pnl, status, grid_level, opened_at, closed_at, account_id)
+       VALUES ($1, $2, $3, $4, $5, $6, NULL, NULL, 'open', $7, now(), NULL, $8)`,
+      [String(contract.contract_id), this.uid, SYMBOL, direction, lots, contract.buy_price, this.gridLevel - 1, this.accountId || null]
     ).catch((err) => console.error(`[${this.uid}] insert trade error:`, err.message));
     trade.tradeDbId = String(contract.contract_id);
 

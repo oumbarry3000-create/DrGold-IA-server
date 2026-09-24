@@ -40,10 +40,46 @@ CREATE TABLE IF NOT EXISTS trades (
 );
 
 CREATE INDEX IF NOT EXISTS idx_trades_uid ON trades(uid);
+
+-- Plateforme multi-traders : formules, validation admin, liaison Deriv
+ALTER TABLE users ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'basic';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_expires_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS approved BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_account_type TEXT NOT NULL DEFAULT 'demo';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_accounts JSONB;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_linked_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_signup_via_app BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS token_saved_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
+
+ALTER TABLE trades ADD COLUMN IF NOT EXISTS account_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_trades_closed ON trades(closed_at);
+
+CREATE TABLE IF NOT EXISTS payments (
+  id TEXT PRIMARY KEY,
+  uid TEXT NOT NULL REFERENCES users(uid),
+  amount INTEGER NOT NULL,
+  days INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  provider_status TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  paid_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_payments_uid ON payments(uid);
 `;
 
 async function initDb() {
   await pool.query(SCHEMA);
 }
 
-module.exports = { pool, initDb };
+// Formule Pro active = plan "pro" non expire
+function isProActive(row) {
+  return row.plan === "pro" && row.plan_expires_at && new Date(row.plan_expires_at) > new Date();
+}
+
+// Compte reel seulement avec un Pro actif, sinon demo
+function effectiveAccountType(row) {
+  return row.deriv_account_type === "real" && isProActive(row) ? "real" : "demo";
+}
+
+module.exports = { pool, initDb, isProActive, effectiveAccountType };

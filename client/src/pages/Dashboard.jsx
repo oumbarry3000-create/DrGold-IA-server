@@ -4,11 +4,13 @@ import { auth } from "../lib/firebase";
 import { api } from "../lib/api";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import logo from "../assets/logo.png";
+import AccountPanel from "../components/AccountPanel";
 
 export default function Dashboard() {
   const [userData, setUserData]   = useState(null);
   const [trades, setTrades]       = useState([]);
   const [toggling, setToggling]   = useState(false);
+  const [eaError, setEaError]     = useState(null);
 
   const uid = auth.currentUser?.uid;
 
@@ -32,10 +34,12 @@ export default function Dashboard() {
 
   async function toggleEA() {
     if (!uid || toggling) return;
-    setToggling(true);
+    setToggling(true); setEaError(null);
     try {
       const { ea_active } = await api.toggleEA();
       setUserData((d) => ({ ...d, ea_active }));
+    } catch (err) {
+      setEaError(err.message);
     } finally {
       setToggling(false);
     }
@@ -71,7 +75,9 @@ export default function Dashboard() {
           </div>
         </div>
         <div style={s.topActions}>
+          {userData?.is_admin && <a href="/admin" style={s.settingsBtn}>🛡️ Admin</a>}
           <a href="/settings" style={s.settingsBtn}>⚙️ Paramètres</a>
+          <button style={s.settingsBtn} onClick={() => auth.signOut()}>Déconnexion</button>
           <button
             style={{ ...s.eaToggle, ...(eaActive ? s.eaOn : s.eaOff), ...(toggling ? { opacity: 0.6 } : {}) }}
             onClick={toggleEA} disabled={toggling}>
@@ -79,6 +85,10 @@ export default function Dashboard() {
           </button>
         </div>
       </div>
+
+      {eaError && <div style={s.eaError}>{eaError}</div>}
+
+      {userData && <AccountPanel user={userData} onChange={load} />}
 
       {/* Capital Deriv */}
       <div style={s.derivCard}>
@@ -99,7 +109,14 @@ export default function Dashboard() {
           </div>
           <div>
             <p style={s.cardLabel}>Compte Deriv</p>
-            <p style={s.derivLoginId}>{userData?.deriv_loginid || "—"}</p>
+            <p style={s.derivLoginId}>
+              {userData?.deriv_loginid || "—"}{" "}
+              {userData?.deriv_loginid && (
+                <span style={{ fontSize: 11, fontWeight: 800, color: /^(DOT|VRT)/.test(userData.deriv_loginid) ? "#60a5fa" : "#f59e0b" }}>
+                  {/^(DOT|VRT)/.test(userData.deriv_loginid) ? "DÉMO" : "RÉEL"}
+                </span>
+              )}
+            </p>
           </div>
         </div>
       </div>
@@ -210,8 +227,9 @@ const s = {
   appTitle:     { color: "#f1f5f9", fontSize: 22, fontWeight: 800, margin: "0 0 4px", letterSpacing: "-0.5px" },
   gold:         { color: "#f59e0b" },
   appSub:       { color: "#475569", fontSize: 13, margin: 0 },
-  topActions:   { display: "flex", gap: 10, alignItems: "center" },
-  settingsBtn:  { background: "#0d1829", border: "1px solid #1e3a5f", borderRadius: 8, padding: "8px 16px", color: "#94a3b8", fontSize: 13, textDecoration: "none", fontWeight: 600 },
+  topActions:   { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" },
+  eaError:      { background: "#7f1d1d33", border: "1px solid #ef444455", borderRadius: 8, padding: "10px 14px", color: "#fca5a5", fontSize: 13, marginBottom: 16 },
+  settingsBtn:  { background: "#0d1829", border: "1px solid #1e3a5f", borderRadius: 8, padding: "8px 16px", color: "#94a3b8", fontSize: 13, textDecoration: "none", fontWeight: 600, cursor: "pointer" },
   eaToggle:     { border: "none", borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 800, cursor: "pointer" },
   eaOn:         { background: "#14532d33", color: "#22c55e", border: "1px solid #22c55e44" },
   eaOff:        { background: "#7f1d1d33", color: "#ef4444", border: "1px solid #ef444444" },

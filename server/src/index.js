@@ -12,6 +12,7 @@ const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: false })); // webhook CinetPay
 app.use("/", routes);
 
 async function main() {
@@ -19,6 +20,7 @@ async function main() {
   console.log("✅ Firebase Admin initialisé");
   await initDb();
   console.log("✅ Base de donnees (Neon) initialisee");
+  await routes.approveAdmins();
 
   app.listen(PORT, () => {
     console.log(`🚀 Serveur DrGold IA démarré sur port ${PORT}`);

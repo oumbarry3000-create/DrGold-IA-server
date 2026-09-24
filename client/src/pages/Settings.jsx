@@ -98,6 +98,9 @@ export default function Settings() {
         <Row label="Break Even ($)">
           <NumInput value={params.breakEvenMoney} min={0.1} max={1000} step={0.5} onChange={(v) => set("breakEvenMoney", v)} />
         </Row>
+        <Row label="Perte max par jour ($) — 0 = sans limite">
+          <NumInput value={params.dailyLossLimit} min={0} max={100000} step={1} onChange={(v) => set("dailyLossLimit", v)} />
+        </Row>
       </Section>
 
       <Section title="📊 Filtres Daily">
@@ -135,7 +138,7 @@ export default function Settings() {
             {derivStatus === "ok"
               ? "✅ Token enregistré. Si l'EA est actif, il se reconnecte avec ce token dans les 10 s."
               : derivStatus && derivStatus !== "saving" ? derivStatus
-              : "Créez le token sur app.deriv.com → API Token. Il est chiffré avant stockage."}
+              : "Créez le token sur developers.deriv.com/dashboard → API tokens (Trade). Il est vérifié puis chiffré."}
           </span>
           <button style={{ ...s.derivBtn, ...(!derivToken.trim() || derivStatus === "saving" ? s.saveBtnDisabled : {}) }}
             onClick={saveDerivToken} disabled={!derivToken.trim() || derivStatus === "saving"}>

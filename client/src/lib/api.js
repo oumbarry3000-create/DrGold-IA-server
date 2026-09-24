@@ -37,9 +37,16 @@ export async function encryptToken(token) {
 }
 
 export const api = {
-  register: (token_encrypted) => authFetch("/api/register", { method: "POST", body: JSON.stringify({ token_encrypted }) }),
+  register: (extra = {}) => authFetch("/api/register", { method: "POST", body: JSON.stringify(extra) }),
   me: () => authFetch("/api/me"),
   saveSettings: (params) => authFetch("/api/settings", { method: "PUT", body: JSON.stringify({ params }) }),
   updateDerivToken: (token) => authFetch("/api/deriv-token", { method: "PUT", body: JSON.stringify({ token }) }),
+  linkDerivOAuth: (code, code_verifier, signup) =>
+    authFetch("/api/deriv/oauth", { method: "POST", body: JSON.stringify({ code, code_verifier, signup }) }),
+  setAccountType: (type) => authFetch("/api/account-type", { method: "PUT", body: JSON.stringify({ type }) }),
   toggleEA: () => authFetch("/api/ea/toggle", { method: "POST" }),
+  startCheckout: () => authFetch("/api/payment/checkout", { method: "POST" }),
+  paymentStatus: (id) => authFetch(`/api/payment/${encodeURIComponent(id)}`),
+  adminUsers: () => authFetch("/api/admin/users"),
+  adminUpdate: (uid, body) => authFetch(`/api/admin/users/${encodeURIComponent(uid)}`, { method: "POST", body: JSON.stringify(body) }),
 };
