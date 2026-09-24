@@ -1,7 +1,7 @@
 // src/pages/Dashboard.jsx
-import { useState, useEffect } from "react";
-import { doc, onSnapshot, collection, query, orderBy, limit, setDoc } from "firebase/firestore";
-import { auth, db } from "../lib/firebase";
+import { useState, useEffect, useCallback } from "react";
+import { auth } from "../lib/firebase";
+import { api } from "../lib/api";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import logo from "../assets/logo.png";
 
@@ -12,29 +12,33 @@ export default function Dashboard() {
 
   const uid = auth.currentUser?.uid;
 
-  // Listener user doc
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!uid) return;
-    return onSnapshot(doc(db, "users", uid), (snap) => {
-      setUserData(snap.data());
-    });
+    try {
+      const { user, trades } = await api.me();
+      setUserData(user);
+      setTrades(trades.map((t) => ({ id: t.contract_id, ...t })));
+    } catch (err) {
+      console.error("chargement dashboard:", err.message);
+    }
   }, [uid]);
 
-  // Listener trades (50 derniers)
+  // Polling (remplace les listeners temps reel Firestore)
   useEffect(() => {
-    if (!uid) return;
-    const q = query(collection(db, "users", uid, "trades"), orderBy("opened_at", "desc"), limit(50));
-    return onSnapshot(q, (snap) => {
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })).reverse();
-      setTrades(list);
-    });
-  }, [uid]);
+    load();
+    const interval = setInterval(load, 5000);
+    return () => clearInterval(interval);
+  }, [load]);
 
   async function toggleEA() {
     if (!uid || toggling) return;
     setToggling(true);
-    await setDoc(doc(db, "users", uid), { ea_active: !userData?.ea_active }, { merge: true });
-    setToggling(false);
+    try {
+      const { ea_active } = await api.toggleEA();
+      setUserData((d) => ({ ...d, ea_active }));
+    } finally {
+      setToggling(false);
+    }
   }
 
   // Stats calculées
@@ -188,7 +192,7 @@ function TradeTable({ trades, open }) {
                 </span>
               </td>
               <td style={s.td}>
-                {t.opened_at?.toDate ? t.opened_at.toDate().toLocaleString("fr-FR") : "—"}
+                {t.opened_at ? new Date(t.opened_at).toLocaleString("fr-FR") : "—"}
               </td>
             </tr>
           ))}

@@ -3,6 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const cors    = require("cors");
 const { initFirebase } = require("./firebase");
+const { initDb }        = require("./db");
 const routes  = require("./routes");
 const { startEAEngine } = require("./engine/manager");
 
@@ -16,6 +17,8 @@ app.use("/", routes);
 async function main() {
   await initFirebase();
   console.log("✅ Firebase Admin initialisé");
+  await initDb();
+  console.log("✅ Base de donnees (Neon) initialisee");
 
   app.listen(PORT, () => {
     console.log(`🚀 Serveur DrGold IA démarré sur port ${PORT}`);

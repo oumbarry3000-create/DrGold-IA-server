@@ -1,9 +1,8 @@
 // server/src/engine/derivClient.js
 const WebSocket = require("ws");
-const { getDB }       = require("../firebase");
+const { pool }                   = require("../db");
 const { getSignal, calcGridLot } = require("../strategy/trendRider");
 const { sendTelegram }           = require("../strategy/telegram");
-const admin = require("firebase-admin");
 
 const DERIV_WS_URL = "wss://ws.binaryws.com/websockets/v3?app_id=1089";
 const SYMBOL       = "frxXAUUSD";
@@ -250,21 +249,12 @@ class DerivClient {
     this.openTrades.push(trade);
     this.gridLevel++;
 
-    // Écrire dans Firestore
-    const tradeRef = getDB().collection("users").doc(this.uid).collection("trades").doc(String(contract.contract_id));
-    tradeRef.set({
-      contract_id:  contract.contract_id,
-      symbol:       SYMBOL,
-      direction,
-      lots,
-      entry:        contract.buy_price,
-      exit:         null,
-      pnl:          null,
-      status:       "open",
-      grid_level:   this.gridLevel - 1,
-      opened_at:    admin.firestore.FieldValue.serverTimestamp(),
-      closed_at:    null,
-    });
+    // Écrire dans Postgres (Neon)
+    pool.query(
+      `INSERT INTO trades (contract_id, uid, symbol, direction, lots, entry, exit, pnl, status, grid_level, opened_at, closed_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NULL, NULL, 'open', $7, now(), NULL)`,
+      [String(contract.contract_id), this.uid, SYMBOL, direction, lots, contract.buy_price, this.gridLevel - 1]
+    ).catch((err) => console.error(`[${this.uid}] insert trade error:`, err.message));
     trade.tradeDbId = String(contract.contract_id);
 
     // Solde mis à jour
@@ -295,13 +285,11 @@ class DerivClient {
       this.signalLocked = false;
     }
 
-    // Update Firestore
-    getDB().collection("users").doc(this.uid).collection("trades").doc(trade.tradeDbId).update({
-      exit:       tx.price || 0,
-      pnl:        profit,
-      status:     "closed",
-      closed_at:  admin.firestore.FieldValue.serverTimestamp(),
-    });
+    // Update Postgres
+    pool.query(
+      `UPDATE trades SET exit = $1, pnl = $2, status = 'closed', closed_at = now() WHERE contract_id = $3`,
+      [tx.price || 0, profit, trade.tradeDbId]
+    ).catch((err) => console.error(`[${this.uid}] update trade error:`, err.message));
 
     // Solde mis à jour
     if (tx.balance != null) {
@@ -332,8 +320,15 @@ class DerivClient {
   }
 
   _updateUserDoc(data) {
-    getDB().collection("users").doc(this.uid).set(data, { merge: true }).catch((err) => {
-      console.error(`[${this.uid}] Firestore update error:`, err.message);
+    const cols = Object.keys(data);
+    if (cols.length === 0) return;
+    const setClause = cols.map((c, i) => `${c} = $${i + 1}`).join(", ");
+    const values = cols.map((c) => data[c]);
+    pool.query(
+      `UPDATE users SET ${setClause} WHERE uid = $${cols.length + 1}`,
+      [...values, this.uid]
+    ).catch((err) => {
+      console.error(`[${this.uid}] update user error:`, err.message);
     });
   }
 

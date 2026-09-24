@@ -1,7 +1,7 @@
 // src/pages/Settings.jsx
 import { useState, useEffect } from "react";
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import { auth, db } from "../lib/firebase";
+import { auth } from "../lib/firebase";
+import { api } from "../lib/api";
 import { DEFAULT_EA_PARAMS } from "../lib/defaultParams";
 
 export default function Settings() {
@@ -13,9 +13,8 @@ export default function Settings() {
     async function load() {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
-      const snap = await getDoc(doc(db, "users", uid));
-      const data = snap.data();
-      setParams({ ...DEFAULT_EA_PARAMS, ...(data?.params || {}) });
+      const { user } = await api.me();
+      setParams({ ...DEFAULT_EA_PARAMS, ...(user?.params || {}) });
     }
     load();
   }, []);
@@ -26,8 +25,7 @@ export default function Settings() {
 
   async function save() {
     setSaving(true);
-    const uid = auth.currentUser?.uid;
-    await setDoc(doc(db, "users", uid), { params }, { merge: true });
+    await api.saveSettings(params);
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);

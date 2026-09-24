@@ -1,5 +1,5 @@
 // server/src/engine/manager.js
-const { getDB }    = require("../firebase");
+const { pool }     = require("../db");
 const DerivClient  = require("./derivClient");
 const { decrypt }  = require("../routes");
 
@@ -7,48 +7,43 @@ const { decrypt }  = require("../routes");
 const activeClients = new Map();
 
 async function startEAEngine() {
-  console.log("🤖 EA Engine démarré — polling Firestore toutes les 10s");
-  await pollFirestore();
-  setInterval(pollFirestore, 10_000);
+  console.log("🤖 EA Engine démarré — polling Postgres toutes les 10s");
+  await pollUsers();
+  setInterval(pollUsers, 10_000);
 }
 
-async function pollFirestore() {
+async function pollUsers() {
   try {
-    const db    = getDB();
-    const snap  = await db.collection("users").get();
+    const { rows } = await pool.query("SELECT uid, ea_active, params, token_encrypted FROM users");
 
-    for (const docSnap of snap.docs) {
-      const uid  = docSnap.id;
-      const data = docSnap.data();
-      const eaActive = data.ea_active === true;
+    for (const row of rows) {
+      const uid = row.uid;
+      const eaActive = row.ea_active === true;
 
       if (eaActive && !activeClients.has(uid)) {
-        // Activer EA pour cet utilisateur
-        await activateUser(uid, data);
+        await activateUser(uid, row);
       } else if (!eaActive && activeClients.has(uid)) {
-        // Désactiver
         deactivateUser(uid);
       } else if (eaActive && activeClients.has(uid)) {
-        // Mettre à jour les paramètres si changés
         const client = activeClients.get(uid);
-        client.params = { ...client.params, ...data.params };
+        client.params = { ...client.params, ...row.params };
       }
     }
   } catch (err) {
-    console.error("pollFirestore error:", err.message);
+    console.error("pollUsers error:", err.message);
   }
 }
 
-async function activateUser(uid, data) {
+async function activateUser(uid, row) {
   try {
-    const tokenEncrypted = data.token_encrypted;
+    const tokenEncrypted = row.token_encrypted;
     if (!tokenEncrypted) {
       console.error(`[${uid}] Pas de token Deriv`);
       return;
     }
 
     const derivToken = decrypt(tokenEncrypted);
-    const params     = data.params || {};
+    const params     = row.params || {};
 
     console.log(`[${uid}] Activation EA...`);
     const client = new DerivClient(uid, derivToken, params);
