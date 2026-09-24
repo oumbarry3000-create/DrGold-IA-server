@@ -1,10 +1,10 @@
 // src/pages/Login.jsx
-// Connexion / inscription : email + mot de passe (oeil pour l'afficher),
-// mot de passe oublie, Google, Deriv. L'acceptation des risques est exigee
-// pour toute creation de compte (formulaire, Google ou Deriv).
+// Connexion / inscription uniquement avec Google ou Deriv (plus d'email +
+// mot de passe). Les anciens comptes email Gmail retrouvent le MEME compte
+// via Google (Firebase rattache la connexion Google a l'adresse existante).
+// L'acceptation des risques est exigee pour toute creation de compte.
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, ArrowLeft, MailCheck } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { api } from "../lib/api";
 import { auth } from "../lib/firebase";
@@ -27,45 +27,18 @@ function GoogleIcon() {
 
 export default function Login() {
   const navigate = useNavigate();
-  const { user, login, register, loginWithGoogle, googleRedirectResult, resetPassword, loading, error, setError } = useAuth();
-  const [mode, setMode]             = useState("login"); // login | register | reset
-  const [email, setEmail]           = useState("");
-  const [password, setPassword]     = useState("");
-  const [showPwd, setShowPwd]       = useState(false);
+  const { user, loginWithGoogle, googleRedirectResult, loading, error } = useAuth();
+  const [mode, setMode]             = useState("login"); // login | register
   const [acceptRisk, setAcceptRisk] = useState(false);
   const [formError, setFormError]   = useState(null);
-  const [resetSent, setResetSent]   = useState(false);
-  const [busySocial, setBusySocial] = useState(null);
+  const [busy, setBusy]             = useState(null);
 
   // Retour d'une connexion Google par redirection (mobile)
   useEffect(() => {
     googleRedirectResult().then((r) => r && afterGoogle(r));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Deja connecte : direction le tableau de bord
-  useEffect(() => { if (user && !busySocial) navigate("/dashboard", { replace: true }); }, [user, busySocial, navigate]);
-
-  function switchMode(m) {
-    setMode(m); setFormError(null); setError(null); setResetSent(false);
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setFormError(null);
-    if (!email || !password) return setFormError("Entrez votre email et votre mot de passe.");
-    if (mode === "register" && !acceptRisk) return setFormError("Vous devez accepter les risques du trading pour créer un compte.");
-    try {
-      if (mode === "register") await register(email, password);
-      else await login(email, password);
-      navigate("/dashboard");
-    } catch { /* message affiche par useAuth */ }
-  }
-
-  async function handleReset(e) {
-    e.preventDefault();
-    setFormError(null);
-    if (!email) return setFormError("Entrez l'email de votre compte.");
-    try { await resetPassword(email); setResetSent(true); } catch { /* message affiche par useAuth */ }
-  }
+  useEffect(() => { if (user && !busy) navigate("/dashboard", { replace: true }); }, [user, busy, navigate]);
 
   // Nouveau compte Google : acceptation des risques obligatoire
   async function afterGoogle({ isNewUser }) {
@@ -78,31 +51,38 @@ export default function Login() {
       });
       if (!ok) {
         try { await auth.currentUser?.delete(); } catch { await auth.signOut(); }
-        setBusySocial(null);
+        setBusy(null);
         return;
       }
       try { await api.register(); } catch { /* le compte est aussi cree au premier chargement */ }
     }
-    setBusySocial(null);
+    setBusy(null);
     navigate("/dashboard", { replace: true });
   }
 
-  async function google() {
+  function needsRisk() {
+    if (mode === "register" && !acceptRisk) {
+      setFormError("Cochez d'abord la case des risques pour créer votre compte.");
+      return true;
+    }
     setFormError(null);
-    if (mode === "register" && !acceptRisk) return setFormError("Cochez d'abord la case des risques pour créer votre compte.");
-    setBusySocial("google");
+    return false;
+  }
+
+  async function google() {
+    if (needsRisk()) return;
+    setBusy("google");
     try {
       const r = await loginWithGoogle();
       if (r) await afterGoogle(r); // sinon : redirection vers Google en cours
     } catch {
-      setBusySocial(null);
+      setBusy(null);
     }
   }
 
   function deriv() {
-    setFormError(null);
-    if (mode === "register" && !acceptRisk) return setFormError("Cochez d'abord la case des risques pour créer votre compte.");
-    setBusySocial("deriv");
+    if (needsRisk()) return;
+    setBusy("deriv");
     startDerivOAuth({ mode: "login", signup: mode === "register" });
   }
 
@@ -117,120 +97,54 @@ export default function Login() {
           <p className="tf-muted" style={{ fontSize: 13, margin: 0 }}>Trading automatisé · XAUUSD</p>
         </div>
 
-        {mode === "reset" ? (
-          <form onSubmit={handleReset} style={st.form} noValidate>
-            <button type="button" className="tf-link" onClick={() => switchMode("login")} style={{ alignSelf: "flex-start" }}>
-              <ArrowLeft size={15} aria-hidden="true" /> Retour à la connexion
+        <div className="tf-segment" role="tablist" aria-label="Connexion ou inscription" style={{ display: "flex", marginBottom: 22 }}>
+          {[["login", "Connexion"], ["register", "Inscription"]].map(([m, label]) => (
+            <button key={m} type="button" role="tab" aria-selected={mode === m} className={mode === m ? "is-active" : ""}
+              style={{ flex: 1, justifyContent: "center" }} onClick={() => { setMode(m); setFormError(null); }}>
+              {label}
             </button>
-            <div>
-              <h2 style={{ fontSize: 17, margin: "0 0 6px" }}>Mot de passe oublié</h2>
-              <p className="tf-muted" style={{ fontSize: 13, lineHeight: 1.6, margin: 0 }}>
-                Entrez l'email de votre compte : vous recevrez un lien pour choisir un nouveau mot de passe.
-              </p>
-            </div>
-            {resetSent ? (
-              <div className="tf-alert tf-alert--info" role="status">
-                <MailCheck size={20} aria-hidden="true" />
-                <div>Email envoyé à <strong>{email}</strong>. Ouvrez le lien reçu (vérifiez aussi les spams), puis revenez vous connecter.</div>
-              </div>
-            ) : (
-              <>
-                <Field id="reset-email" label="Email">
-                  <input id="reset-email" className="tf-input" type="email" autoComplete="email" value={email}
-                    onChange={(e) => setEmail(e.target.value)} placeholder="vous@exemple.com" autoFocus />
-                </Field>
-                {message && <div className="tf-alert tf-alert--danger" role="alert">{message}</div>}
-                <button type="submit" className="tf-btn tf-btn--gold tf-btn--lg tf-btn--block" disabled={loading}>
-                  {loading ? "Envoi…" : "Envoyer le lien de réinitialisation"}
-                </button>
-              </>
-            )}
-            {resetSent && <button type="button" className="tf-btn tf-btn--lg tf-btn--block" onClick={() => switchMode("login")}>Retour à la connexion</button>}
-          </form>
-        ) : (
-          <>
-            <div className="tf-segment" role="tablist" aria-label="Connexion ou inscription" style={{ display: "flex", marginBottom: 22 }}>
-              {[["login", "Connexion"], ["register", "Inscription"]].map(([m, label]) => (
-                <button key={m} type="button" role="tab" aria-selected={mode === m} className={mode === m ? "is-active" : ""} style={{ flex: 1, justifyContent: "center" }} onClick={() => switchMode(m)}>
-                  {label}
-                </button>
-              ))}
-            </div>
+          ))}
+        </div>
 
-            <form onSubmit={handleSubmit} style={st.form} noValidate>
-              <Field id="login-email" label="Email">
-                <input id="login-email" className="tf-input" type="email" autoComplete="email" value={email}
-                  onChange={(e) => setEmail(e.target.value)} placeholder="vous@exemple.com" />
-              </Field>
+        <p style={{ color: "var(--text-2)", fontSize: 14, lineHeight: 1.6, textAlign: "center", margin: "0 0 18px" }}>
+          {mode === "login"
+            ? "Connectez-vous avec le compte utilisé lors de votre inscription."
+            : "Créez votre compte en quelques secondes. Avec Deriv, votre compte de trading est relié directement et le bot est prêt."}
+        </p>
 
-              <Field id="login-password" label="Mot de passe"
-                extra={mode === "login" && <button type="button" className="tf-link" style={{ fontSize: 12 }} onClick={() => switchMode("reset")}>Mot de passe oublié ?</button>}>
-                <div style={{ position: "relative" }}>
-                  <input id="login-password" className="tf-input" type={showPwd ? "text" : "password"} value={password}
-                    autoComplete={mode === "register" ? "new-password" : "current-password"}
-                    onChange={(e) => setPassword(e.target.value)} placeholder={mode === "register" ? "6 caractères minimum" : "••••••••"}
-                    style={{ width: "100%", boxSizing: "border-box", paddingRight: 46 }} />
-                  <button type="button" onClick={() => setShowPwd((v) => !v)} style={st.eye}
-                    aria-label={showPwd ? "Masquer le mot de passe" : "Afficher le mot de passe"} aria-pressed={showPwd}>
-                    {showPwd ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
-              </Field>
-
-              {mode === "register" && (
-                <label style={st.risk}>
-                  <input type="checkbox" checked={acceptRisk} onChange={(e) => setAcceptRisk(e.target.checked)} style={{ marginTop: 3, width: 16, height: 16, flexShrink: 0 }} />
-                  <span>Je comprends que le trading comporte un <strong style={{ color: "var(--text)" }}>risque élevé de perte</strong>, que les performances passées ne garantissent pas les résultats futurs, et que je peux perdre tout ou partie de mon capital.</span>
-                </label>
-              )}
-
-              {message && <div className="tf-alert tf-alert--danger" role="alert">{message}</div>}
-
-              <button type="submit" className="tf-btn tf-btn--gold tf-btn--lg tf-btn--block" disabled={loading || !!busySocial}>
-                {loading && !busySocial ? "Chargement…" : mode === "login" ? "Se connecter" : "Créer mon compte"}
-              </button>
-            </form>
-
-            <div className="tf-divider" role="separator"><span>ou</span></div>
-
-            <div style={{ display: "grid", gap: 10 }}>
-              <button type="button" className="tf-btn tf-btn--lg tf-btn--block" onClick={google} disabled={loading || !!busySocial} style={st.social}>
-                <GoogleIcon /> {busySocial === "google" ? "Connexion à Google…" : "Continuer avec Google"}
-              </button>
-              <button type="button" className="tf-btn tf-btn--lg tf-btn--block" onClick={deriv} disabled={loading || !!busySocial} style={st.social}>
-                <span className="tf-deriv" aria-hidden="true" style={{ fontSize: 16 }}>deriv</span>
-                {busySocial === "deriv" ? "Redirection vers Deriv…" : mode === "register" ? "Créer mon compte avec Deriv" : "Continuer avec Deriv"}
-              </button>
-            </div>
-            <p className="tf-muted" style={{ fontSize: 11.5, lineHeight: 1.6, textAlign: "center", margin: "16px 0 0" }}>
-              Avec Deriv, votre compte Tradify est directement relié à votre compte de trading. Tradify n'a jamais accès à vos retraits.
-            </p>
-          </>
+        {mode === "register" && (
+          <label style={st.risk}>
+            <input type="checkbox" checked={acceptRisk} onChange={(e) => { setAcceptRisk(e.target.checked); setFormError(null); }}
+              style={{ marginTop: 3, width: 16, height: 16, flexShrink: 0 }} />
+            <span>Je comprends que le trading comporte un <strong style={{ color: "var(--text)" }}>risque élevé de perte</strong>, que les performances passées ne garantissent pas les résultats futurs, et que je peux perdre tout ou partie de mon capital.</span>
+          </label>
         )}
-      </div>
-    </div>
-  );
-}
 
-function Field({ id, label, extra, children }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-        <label htmlFor={id} style={{ color: "var(--text-2)", fontSize: 13, fontWeight: 600 }}>{label}</label>
-        {extra}
+        {message && <div className="tf-alert tf-alert--danger" role="alert" style={{ marginBottom: 14 }}>{message}</div>}
+
+        <div style={{ display: "grid", gap: 12 }}>
+          <button type="button" className="tf-btn tf-btn--lg tf-btn--block" onClick={google} disabled={loading || !!busy} style={st.social}>
+            <GoogleIcon /> {busy === "google" ? "Connexion à Google…" : "Continuer avec Google"}
+          </button>
+          <button type="button" className="tf-btn tf-btn--lg tf-btn--block" onClick={deriv} disabled={loading || !!busy} style={st.social}>
+            <span className="tf-deriv" aria-hidden="true" style={{ fontSize: 16 }}>deriv</span>
+            {busy === "deriv" ? "Redirection vers Deriv…" : mode === "register" ? "Créer mon compte avec Deriv" : "Continuer avec Deriv"}
+          </button>
+        </div>
+
+        <p className="tf-muted" style={{ fontSize: 11.5, lineHeight: 1.6, textAlign: "center", margin: "18px 0 0" }}>
+          Pas de mot de passe à retenir. Tradify n'a jamais accès à vos retraits Deriv.
+        </p>
       </div>
-      {children}
     </div>
   );
 }
 
 const st = {
-  page:    { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 16px" },
-  card:    { width: "100%", maxWidth: 440, padding: "32px 28px", borderRadius: 18 },
-  header:  { display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 6, marginBottom: 26 },
-  title:   { fontSize: 28, fontWeight: 800, margin: "6px 0 0", letterSpacing: "-0.5px" },
-  form:    { display: "flex", flexDirection: "column", gap: 18 },
-  eye:     { position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", width: 40, height: 40, border: "none", background: "transparent", color: "var(--text-2)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 8 },
-  risk:    { display: "flex", gap: 10, alignItems: "flex-start", color: "var(--text-2)", fontSize: 12.5, lineHeight: 1.6, cursor: "pointer" },
-  social:  { background: "var(--bg-2)", fontWeight: 600 },
+  page:   { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 16px" },
+  card:   { width: "100%", maxWidth: 440, padding: "32px 28px", borderRadius: 18 },
+  header: { display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 6, marginBottom: 26 },
+  title:  { fontSize: 28, fontWeight: 800, margin: "6px 0 0", letterSpacing: "-0.5px" },
+  risk:   { display: "flex", gap: 10, alignItems: "flex-start", color: "var(--text-2)", fontSize: 12.5, lineHeight: 1.6, cursor: "pointer", marginBottom: 16 },
+  social: { background: "var(--bg-2)", fontWeight: 600, minHeight: 52, fontSize: 15 },
 };
