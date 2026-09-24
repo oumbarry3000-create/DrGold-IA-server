@@ -25,11 +25,11 @@ const ai = API_KEY ? new OpenAI({ apiKey: API_KEY, baseURL: process.env.AI_BASE_
 let cache = null;      // { data, at }
 let pending = null;    // calcul en cours (evite les appels paralleles)
 
-function fetchCandles() {
+function fetchCandles(symbol = SYMBOL, granularity = 3600, count = 200) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(PUBLIC_WS);
     const timer = setTimeout(() => { ws.terminate(); reject(new Error("délai dépassé")); }, 15000);
-    ws.on("open", () => ws.send(JSON.stringify({ ticks_history: SYMBOL, count: 200, end: "latest", style: "candles", granularity: 3600 })));
+    ws.on("open", () => ws.send(JSON.stringify({ ticks_history: symbol, count, end: "latest", style: "candles", granularity })));
     ws.on("message", (raw) => {
       clearTimeout(timer);
       ws.close();
@@ -158,6 +158,74 @@ router.get("/api/market/analysis", requireAuth, async (req, res) => {
     console.error("market analysis error:", err.message);
     if (cache) return res.json({ ...cache.data, stale: true });
     res.json({ status: "unavailable", reason: "Analyse indisponible pour le moment." });
+  }
+});
+
+// ─── Graphique et cotations (donnees publiques Deriv) ──────────────────────
+
+const TIMEFRAMES = { M15: 900, H1: 3600, H4: 14400 };
+const QUOTES = [
+  { symbol: "frxXAUUSD", label: "XAUUSD", digits: 2 },
+  { symbol: "frxEURUSD", label: "EURUSD", digits: 4 },
+  { symbol: "OTC_NDX",   label: "US100",  digits: 1 },
+  { symbol: "cryBTCUSD", label: "BTCUSD", digits: 1 },
+];
+const small = new Map(); // cle -> { data, at }
+
+async function cached(key, ttl, fn) {
+  const hit = small.get(key);
+  if (hit && Date.now() - hit.at < ttl) return hit.data;
+  const data = await fn();
+  small.set(key, { data, at: Date.now() });
+  return data;
+}
+
+// GET /api/market/candles?tf=H1 — bougies XAUUSD + EMA 20/50 (cache 30 s)
+router.get("/api/market/candles", requireAuth, async (req, res) => {
+  const tf = TIMEFRAMES[req.query.tf] ? req.query.tf : "H1";
+  try {
+    const data = await cached(`candles-${tf}`, 30_000, async () => {
+      const all = await fetchCandles(SYMBOL, TIMEFRAMES[tf], 150);
+      const closes = all.map((c) => c.c);
+      const e20 = ema(closes, 20), e50 = ema(closes, 50);
+      const from = Math.max(0, all.length - 80); // 80 bougies affichees, EMA calculees sur 150
+      const prevClose = (await fetchCandles(SYMBOL, 86400, 2))[0]?.c;
+      const last = all[all.length - 1];
+      return {
+        symbol: "XAUUSD", tf,
+        candles: all.slice(from).map((c) => ({ time: c.t, open: c.o, high: c.h, low: c.l, close: c.c })),
+        ema20: all.slice(from).map((c, i) => ({ time: c.t, value: r2(e20[from + i]) })),
+        ema50: all.slice(from).map((c, i) => ({ time: c.t, value: r2(e50[from + i]) })),
+        last: last?.c ?? null,
+        change: prevClose ? r2(last.c - prevClose) : null,
+        change_pct: prevClose ? r2(((last.c - prevClose) / prevClose) * 100) : null,
+        ema20_last: r2(e20[e20.length - 1]), ema50_last: r2(e50[e50.length - 1]),
+      };
+    });
+    res.json(data);
+  } catch (err) {
+    console.error("candles error:", err.message);
+    res.status(502).json({ error: "Graphique indisponible pour le moment" });
+  }
+});
+
+// GET /api/market/quotes — XAUUSD, EURUSD, US100, BTCUSD + variation du jour (cache 20 s)
+router.get("/api/market/quotes", requireAuth, async (req, res) => {
+  try {
+    const data = await cached("quotes", 20_000, async () => Promise.all(QUOTES.map(async (q) => {
+      try {
+        const c = await fetchCandles(q.symbol, 86400, 2);
+        const prev = c.length > 1 ? c[0].c : null, last = c[c.length - 1]?.c ?? null;
+        return { label: q.label, digits: q.digits, price: last,
+          change: prev != null && last != null ? last - prev : null,
+          change_pct: prev ? ((last - prev) / prev) * 100 : null };
+      } catch {
+        return { label: q.label, digits: q.digits, price: null, change: null, change_pct: null };
+      }
+    })));
+    res.json({ quotes: data });
+  } catch (err) {
+    res.status(502).json({ error: "Cotations indisponibles" });
   }
 });
 
