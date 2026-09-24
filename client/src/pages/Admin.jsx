@@ -8,7 +8,7 @@ import { api } from "../lib/api";
 import { ui, fmtXof, fmtDate } from "../lib/ui";
 
 const FILTERS = [
-  ["pending", "À valider"],
+  ["pending", "Non liés / suspendus"],
   ["all", "Tous"],
   ["active", "Bot actif"],
   ["pro", "Pro"],
@@ -87,7 +87,7 @@ export default function Admin() {
 
       <div style={st.kpis}>
         <Kpi label="Traders" value={totals.traders} />
-        <Kpi label="À valider" value={totals.pending} color={totals.pending ? "#f59e0b" : undefined} />
+        <Kpi label="Non liés / suspendus" value={totals.pending} color={totals.pending ? "#f59e0b" : undefined} />
         <Kpi label="Bots actifs" value={totals.active} color="#22c55e" />
         <Kpi label="Abonnés Pro" value={totals.pro} color="#a78bfa" />
         <Kpi label="Revenus 30 j" value={fmtXof(revenue30)} color="#f59e0b" />
@@ -96,9 +96,8 @@ export default function Admin() {
 
       <div style={{ ...ui.box, padding: "12px 16px" }}>
         <p style={{ ...ui.muted, margin: 0 }}>
-          ✅ <strong style={{ color: "#f1f5f9" }}>Validation :</strong> vérifiez que les comptes Deriv du trader
-          (colonne « Comptes Deriv ») apparaissent dans votre tableau de bord partenaire Deriv avant de valider.
-          « Via lien » indique que le trader a créé son compte avec le bouton de l'application.
+          ✅ Les traders sont <strong style={{ color: "#f1f5f9" }}>validés automatiquement</strong> dès qu'ils connectent Deriv.
+          « Via lien » = compte Deriv créé avec votre lien partenaire. « Suspendre » coupe l'accès et arrête le bot.
         </p>
       </div>
 
@@ -134,8 +133,10 @@ export default function Admin() {
                     {u.deriv_signup_via_app && <span style={ui.badge("#14532d55", "#86efac")}>Via lien</span>}
                   </td>
                   <td style={st.td}>
-                    {u.approved ? <span style={ui.badge("#14532d55", "#86efac")}>Validé</span> : <span style={ui.badge("#78350f55", "#fcd34d")}>En attente</span>}
-                    <div style={st.sub}>{u.has_token ? `Token : ${u.token_age_days ?? "?"} j` : "Pas de token"}</div>
+                    {!u.has_deriv_access ? <span style={ui.badge("#1e293b", "#94a3b8")}>Deriv non lié</span>
+                      : u.approved ? <span style={ui.badge("#14532d55", "#86efac")}>Actif</span>
+                      : <span style={ui.badge("#7f1d1d55", "#fca5a5")}>Suspendu</span>}
+                    <div style={st.sub}>{u.has_token ? `Token 24h/24 : ${u.token_age_days ?? "?"} j` : u.deriv_reauth_needed ? "Reconnexion requise" : u.has_deriv_access ? "OAuth" : ""}</div>
                   </td>
                   <td style={st.td}>
                     {u.pro_active ? <span style={ui.badge("#4c1d9555", "#c4b5fd")}>Pro</span> : <span style={ui.badge("#1e293b", "#94a3b8")}>Basique</span>}
@@ -155,8 +156,8 @@ export default function Admin() {
                   <td style={{ ...st.td, whiteSpace: "nowrap" }}>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", maxWidth: 220 }}>
                       {u.approved
-                        ? <button style={ui.btnRed} disabled={busy === u.uid} onClick={() => act(u.uid, { approved: false }, `Retirer la validation de ${u.email} ? Son bot sera arrêté.`)}>Invalider</button>
-                        : <button style={{ ...ui.btnSm, background: "#166534", border: "1px solid #22c55e" }} disabled={busy === u.uid} onClick={() => act(u.uid, { approved: true })}>Valider</button>}
+                        ? <button style={ui.btnRed} disabled={busy === u.uid} onClick={() => act(u.uid, { approved: false }, `Suspendre ${u.email} ? Son bot sera arrêté.`)}>Suspendre</button>
+                        : <button style={{ ...ui.btnSm, background: "#166534", border: "1px solid #22c55e" }} disabled={busy === u.uid} onClick={() => act(u.uid, { approved: true })}>Réactiver</button>}
                       <button style={ui.btnSm} disabled={busy === u.uid} onClick={() => act(u.uid, { grantProDays: 30 }, `Offrir 30 jours de Pro à ${u.email} ?`)}>+30 j Pro</button>
                       {u.pro_active && <button style={ui.btnRed} disabled={busy === u.uid} onClick={() => act(u.uid, { revokePro: true }, `Retirer le Pro de ${u.email} ? Il repassera en démo.`)}>Retirer Pro</button>}
                       {u.ea_active && <button style={ui.btnRed} disabled={busy === u.uid} onClick={() => act(u.uid, { stopEA: true }, `Arrêter le bot de ${u.email} ?`)}>Stop bot</button>}

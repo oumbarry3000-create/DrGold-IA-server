@@ -27,13 +27,17 @@ async function pollUsers() {
     await enforceDailyLossLimits();
 
     const { rows } = await pool.query(
-      `SELECT uid, ea_active, approved, params, token_encrypted, plan, plan_expires_at, deriv_account_type
+      `SELECT uid, ea_active, approved, params, token_encrypted, oauth_access_encrypted, oauth_refresh_encrypted,
+              deriv_reauth_needed, plan, plan_expires_at, deriv_account_type
        FROM users`
     );
 
     for (const row of rows) {
       const uid      = row.uid;
-      const eligible = row.ea_active === true && row.approved === true && !!row.token_encrypted;
+      // Token manuel prioritaire (24h/24), sinon connexion OAuth encore utilisable
+      const hasAccess = !!row.token_encrypted || (!!row.oauth_access_encrypted && !row.deriv_reauth_needed);
+      const eligible  = row.ea_active === true && row.approved === true && hasAccess;
+      row.credKey     = row.token_encrypted || row.oauth_access_encrypted;
       const type     = effectiveAccountType(row);
       const client   = activeClients.get(uid);
 
@@ -41,7 +45,7 @@ async function pollUsers() {
         await activateUser(uid, row, type);
       } else if (!eligible && client) {
         deactivateUser(uid);
-      } else if (eligible && client && (client.tokenEncrypted !== row.token_encrypted || client.accountType !== type)) {
+      } else if (eligible && client && (client.tokenEncrypted !== row.credKey || client.accountType !== type)) {
         // Nouveau token ou passage demo <-> reel : reconnexion
         console.log(`[${uid}] Token ou compte change (${client.accountType} -> ${type}), reconnexion...`);
         deactivateUser(uid);
@@ -83,13 +87,15 @@ async function enforceDailyLossLimits() {
 
 async function activateUser(uid, row, accountType) {
   try {
-    const tokenEncrypted = row.token_encrypted;
-    const derivToken = decrypt(tokenEncrypted);
+    const usePat     = !!row.token_encrypted;
+    const derivToken = decrypt(usePat ? row.token_encrypted : row.oauth_access_encrypted);
     const params     = { ...(row.params || {}), derivAccountType: accountType };
 
-    console.log(`[${uid}] Activation EA (compte ${accountType})...`);
+    console.log(`[${uid}] Activation EA (compte ${accountType}, ${usePat ? "token" : "OAuth"})...`);
     const client = new DerivClient(uid, derivToken, params);
-    client.tokenEncrypted = tokenEncrypted;
+    client.authKind       = usePat ? "pat" : "oauth";
+    client.refreshToken   = !usePat && row.oauth_refresh_encrypted ? decrypt(row.oauth_refresh_encrypted) : null;
+    client.tokenEncrypted = row.credKey;
     client.accountType    = accountType;
     activeClients.set(uid, client);
     client.start();

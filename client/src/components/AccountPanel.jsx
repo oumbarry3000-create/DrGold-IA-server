@@ -1,6 +1,6 @@
 // src/components/AccountPanel.jsx
-// Parcours d'un nouveau trader (1. lier Deriv via le lien partenaire,
-// 2. token du bot, 3. validation admin) puis carte formule / type de compte.
+// Parcours d'un nouveau trader : connecter Deriv (OAuth, lien partenaire pour
+// les nouveaux comptes, validation automatique) puis carte formule / type de compte.
 import { useState } from "react";
 import { api } from "../lib/api";
 import { startDerivOAuth } from "../lib/derivOAuth";
@@ -9,55 +9,48 @@ import { ui, fmtXof, fmtDate } from "../lib/ui";
 const TOKEN_RENEW_DAYS = 80; // les tokens Deriv expirent au plus tard a 90 jours
 
 export default function AccountPanel({ user, onChange }) {
-  const linked   = (user.deriv_accounts || []).length > 0;
-  const hasToken = user.has_token;
-  const tokenOld = hasToken && user.token_age_days != null && user.token_age_days >= TOKEN_RENEW_DAYS;
+  const linked   = user.has_deriv_access;
+  const tokenOld = user.has_token && user.token_age_days != null && user.token_age_days >= TOKEN_RENEW_DAYS;
 
-  if (!linked || !hasToken || !user.approved) {
+  // Etape unique : connecter Deriv (compte valide automatiquement ensuite)
+  if (!linked) {
     return (
       <div style={{ ...ui.box, borderColor: "#f59e0b55" }}>
-        <h3 style={{ ...ui.h3, color: "#f59e0b" }}>🚀 Activez votre bot en 3 étapes</h3>
-        <Step n={1} done={linked} title="Connecter votre compte Deriv">
-          <LinkDeriv />
-        </Step>
-        <Step n={2} done={hasToken} title="Autoriser le bot à trader" locked={!linked}>
-          <TokenForm onSaved={onChange} />
-        </Step>
-        <Step n={3} done={user.approved} title="Validation de votre compte" locked={!linked || !hasToken}>
-          <p style={ui.muted}>
-            Notre équipe vérifie votre compte (généralement sous 24 h). Vous pourrez ensuite activer le bot.
-          </p>
-        </Step>
+        <h3 style={{ ...ui.h3, color: "#f59e0b" }}>🚀 Connectez votre compte Deriv pour activer le bot</h3>
+        <LinkDeriv />
+      </div>
+    );
+  }
+
+  if (!user.approved) {
+    return (
+      <div style={{ ...ui.box, borderColor: "#ef444455" }}>
+        <h3 style={{ ...ui.h3, color: "#fca5a5" }}>⛔ Compte suspendu</h3>
+        <p style={{ ...ui.muted, margin: 0 }}>Votre compte a été suspendu par l'équipe DrGold. Contactez le support.</p>
       </div>
     );
   }
 
   return (
     <>
+      {user.deriv_reauth_needed && !user.has_token && (
+        <div style={{ ...ui.box, borderColor: "#f59e0b" }}>
+          <h3 style={{ ...ui.h3, color: "#f59e0b" }}>🔄 Reconnectez votre compte Deriv</h3>
+          <p style={ui.muted}>
+            Par sécurité, Deriv a mis fin à la connexion du bot. Un clic suffit pour le relancer
+            (puis réactivez l'EA).
+          </p>
+          <button style={ui.btnGold} onClick={() => startDerivOAuth()}>Reconnecter Deriv</button>
+        </div>
+      )}
       {tokenOld && (
         <div style={{ ...ui.box, borderColor: "#f59e0b55" }}>
           <h3 style={{ ...ui.h3, color: "#f59e0b" }}>⏰ Votre token Deriv expire bientôt</h3>
-          <p style={ui.muted}>Créé il y a {user.token_age_days} jours : créez-en un nouveau pour que le bot ne s'arrête pas.</p>
-          <TokenForm onSaved={onChange} />
+          <p style={ui.muted}>Créé il y a {user.token_age_days} jours : remplacez-le dans Paramètres → Compte Deriv.</p>
         </div>
       )}
       <PlanCard user={user} onChange={onChange} />
     </>
-  );
-}
-
-function Step({ n, done, title, locked, children }) {
-  return (
-    <div style={{ display: "flex", gap: 14, padding: "12px 0", borderTop: n > 1 ? "1px solid #1e3a5f" : "none", opacity: locked ? 0.45 : 1 }}>
-      <div style={{
-        width: 28, height: 28, flexShrink: 0, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
-        fontWeight: 800, fontSize: 13, background: done ? "#22c55e" : "#1e3a5f", color: done ? "#060d1a" : "#94a3b8",
-      }}>{done ? "✓" : n}</div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ color: "#f1f5f9", fontWeight: 700, fontSize: 14, margin: "4px 0 8px" }}>{title}</p>
-        {!done && !locked && children}
-      </div>
-    </div>
   );
 }
 
@@ -72,46 +65,6 @@ function LinkDeriv() {
         <button style={ui.btnGold} onClick={() => startDerivOAuth({ signup: true })}>Créer mon compte Deriv</button>
         <button style={ui.btnDark} onClick={() => startDerivOAuth()}>J'ai déjà un compte Deriv</button>
       </div>
-    </>
-  );
-}
-
-function TokenForm({ onSaved }) {
-  const [token, setToken]   = useState("");
-  const [status, setStatus] = useState(null);
-  const [saving, setSaving] = useState(false);
-
-  async function save() {
-    if (!token.trim()) return;
-    setSaving(true); setStatus(null);
-    try {
-      await api.updateDerivToken(token.trim());
-      setToken("");
-      setStatus({ ok: "Token vérifié et enregistré ✅" });
-      onSaved?.();
-    } catch (err) {
-      setStatus({ error: err.message });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <>
-      <ol style={{ ...ui.muted, paddingLeft: 18 }}>
-        <li>Ouvrez <a href="https://developers.deriv.com/dashboard/" target="_blank" rel="noreferrer" style={{ color: "#f59e0b" }}>developers.deriv.com/dashboard</a> et connectez-vous avec votre compte Deriv.</li>
-        <li>Menu <strong style={{ color: "#f1f5f9" }}>API tokens</strong> → créez un token, cochez <strong style={{ color: "#f1f5f9" }}>Trade</strong>, expiration 90 jours.</li>
-        <li>Copiez-le et collez-le ci-dessous. Il est vérifié puis chiffré.</li>
-      </ol>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <input style={{ ...ui.input, flex: 1, minWidth: 200 }} type="password" autoComplete="off"
-          value={token} onChange={(e) => setToken(e.target.value)} placeholder="pat_…" />
-        <button style={{ ...ui.btnGold, opacity: saving || !token.trim() ? 0.5 : 1 }} disabled={saving || !token.trim()} onClick={save}>
-          {saving ? "Vérification…" : "Enregistrer"}
-        </button>
-      </div>
-      {status?.error && <div style={ui.error}>{status.error}</div>}
-      {status?.ok && <div style={ui.ok}>{status.ok}</div>}
     </>
   );
 }

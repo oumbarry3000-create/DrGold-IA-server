@@ -92,8 +92,13 @@ function numify(row, keys) {
 function publicUser(row) {
   const user = numify({ ...row }, ["deriv_balance"]);
   const hasToken = !!user.token_encrypted;
-  delete user.token_encrypted; // jamais renvoye au client
-  user.has_token        = hasToken;
+  const hasOAuth = !!user.oauth_access_encrypted;
+  // jamais de jeton renvoye au client
+  delete user.token_encrypted;
+  delete user.oauth_access_encrypted;
+  delete user.oauth_refresh_encrypted;
+  user.has_token        = hasToken;          // token manuel (optionnel, 24h/24)
+  user.has_deriv_access = hasToken || hasOAuth;
   user.is_admin         = isAdminEmail(user.email);
   user.pro_active       = !!isProActive(row);
   user.effective_account_type = effectiveAccountType(row);
@@ -174,8 +179,8 @@ router.post("/api/deriv/oauth", requireAuth, async (req, res) => {
     if (!code || !code_verifier) return res.status(400).json({ error: "code OAuth manquant" });
     await ensureUser(req.uid, req.email);
 
-    const accessToken = await exchangeOAuthCode({ code, codeVerifier: code_verifier, redirectUri: OAUTH_REDIRECT });
-    const accounts    = await listAccounts(accessToken);
+    const tokens   = await exchangeOAuthCode({ code, codeVerifier: code_verifier, redirectUri: OAUTH_REDIRECT });
+    const accounts = await listAccounts(tokens.accessToken);
     if (accounts.length === 0) return res.status(400).json({ error: "Aucun compte trouve sur ce compte Deriv" });
 
     // Un meme compte Deriv ne peut etre lie qu'a un seul utilisateur DrGold
@@ -187,11 +192,16 @@ router.post("/api/deriv/oauth", requireAuth, async (req, res) => {
     );
     if (clash.rows.length > 0) return res.status(409).json({ error: "Ce compte Deriv est deja lie a un autre utilisateur DrGold" });
 
+    // Liaison reussie = compte valide automatiquement ; le bot utilisera ces
+    // jetons OAuth (pas de token a copier par le client).
     await pool.query(
       `UPDATE users SET deriv_accounts = $1, deriv_linked_at = now(),
-         deriv_signup_via_app = deriv_signup_via_app OR $2
-       WHERE uid = $3`,
-      [JSON.stringify(accounts), !!signup, req.uid]
+         deriv_signup_via_app = deriv_signup_via_app OR $2,
+         oauth_access_encrypted = $3, oauth_refresh_encrypted = $4, oauth_expires_at = $5,
+         deriv_reauth_needed = false, approved = true
+       WHERE uid = $6`,
+      [JSON.stringify(accounts), !!signup, encrypt(tokens.accessToken),
+       tokens.refreshToken ? encrypt(tokens.refreshToken) : null, tokens.expiresAt, req.uid]
     );
     res.json({ status: "ok", accounts });
   } catch (err) {
@@ -257,12 +267,16 @@ router.put("/api/account-type", requireAuth, async (req, res) => {
 // POST /api/ea/toggle — active/desactive l'EA (compte valide + token requis)
 router.post("/api/ea/toggle", requireAuth, async (req, res) => {
   try {
-    const { rows } = await pool.query("SELECT ea_active, approved, token_encrypted FROM users WHERE uid = $1", [req.uid]);
+    const { rows } = await pool.query(
+      "SELECT ea_active, approved, token_encrypted, oauth_access_encrypted, deriv_reauth_needed FROM users WHERE uid = $1",
+      [req.uid]
+    );
     const row = rows[0];
     if (!row) return res.status(404).json({ error: "utilisateur introuvable" });
     if (!row.ea_active) {
-      if (!row.approved) return res.status(403).json({ error: "Votre compte est en attente de validation" });
-      if (!row.token_encrypted) return res.status(400).json({ error: "Ajoutez d'abord votre token Deriv" });
+      if (!row.token_encrypted && !row.oauth_access_encrypted) return res.status(400).json({ error: "Connectez d'abord votre compte Deriv" });
+      if (!row.token_encrypted && row.deriv_reauth_needed) return res.status(400).json({ error: "Reconnectez votre compte Deriv (bouton en haut de page)" });
+      if (!row.approved) return res.status(403).json({ error: "Votre compte a été suspendu. Contactez le support." });
     }
     const result = await pool.query(
       "UPDATE users SET ea_active = NOT ea_active WHERE uid = $1 RETURNING ea_active",
@@ -428,9 +442,12 @@ router.post("/api/admin/users/:uid", requireAuth, requireAdmin, async (req, res)
 // Au demarrage : les comptes admin existants sont valides d'office (sinon le
 // moteur, qui exige approved = true, couperait leur bot)
 async function approveAdmins() {
-  await pool.query("UPDATE users SET approved = true WHERE lower(email) = ANY($1) AND NOT approved", [ADMIN_EMAILS]);
+  const r = await pool.query("UPDATE users SET approved = true WHERE lower(email) = ANY($1) AND NOT approved", [ADMIN_EMAILS]);
+  const admins = await pool.query("SELECT email, approved FROM users WHERE lower(email) = ANY($1)", [ADMIN_EMAILS]);
+  console.log(`👤 Admins (${ADMIN_EMAILS.join(",")}) : ${admins.rows.length} en base, ${r.rowCount} valide(s) au demarrage`);
 }
 
 module.exports = router;
 module.exports.decrypt = decrypt;
+module.exports.encrypt = encrypt;
 module.exports.approveAdmins = approveAdmins;

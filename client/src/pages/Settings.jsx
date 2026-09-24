@@ -127,7 +127,7 @@ export default function Settings() {
         </Row>
       </Section>
 
-      <Section title="🔑 Compte Deriv">
+      <Section title="🔑 Mode 24h/24 (optionnel)">
         <Row label={derivLogin ? `Compte actuel : ${derivLogin}` : "Aucun compte Deriv connecté"}>
           <input style={s.textInput} type="password" value={derivToken} autoComplete="off"
             onChange={(e) => { setDerivToken(e.target.value); setDerivStatus(null); }}
@@ -138,7 +138,7 @@ export default function Settings() {
             {derivStatus === "ok"
               ? "✅ Token enregistré. Si l'EA est actif, il se reconnecte avec ce token dans les 10 s."
               : derivStatus && derivStatus !== "saving" ? derivStatus
-              : "Créez le token sur developers.deriv.com/dashboard → API tokens (Trade). Il est vérifié puis chiffré."}
+              : "Facultatif : un token Deriv (developers.deriv.com/dashboard → API tokens, Trade, 90 jours) évite d'avoir à reconnecter Deriv. Il est vérifié puis chiffré."}
           </span>
           <button style={{ ...s.derivBtn, ...(!derivToken.trim() || derivStatus === "saving" ? s.saveBtnDisabled : {}) }}
             onClick={saveDerivToken} disabled={!derivToken.trim() || derivStatus === "saving"}>

@@ -51,6 +51,11 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_linked_at TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_signup_via_app BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS token_saved_at TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
+-- Connexion Deriv par OAuth (sans token a copier par le client)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_access_encrypted TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_refresh_encrypted TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_expires_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_reauth_needed BOOLEAN NOT NULL DEFAULT false;
 
 ALTER TABLE trades ADD COLUMN IF NOT EXISTS account_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_trades_closed ON trades(closed_at);
@@ -70,6 +75,21 @@ CREATE INDEX IF NOT EXISTS idx_payments_uid ON payments(uid);
 
 async function initDb() {
   await pool.query(SCHEMA);
+  await runOnce("auto_approve_linked_2026_09_24",
+    // Passage a la validation automatique : les traders deja lies qui
+    // attendaient une validation manuelle sont valides (une seule fois, pour
+    // ne pas reactiver plus tard un compte suspendu par l'admin).
+    `UPDATE users SET approved = true
+     WHERE NOT approved AND (token_encrypted IS NOT NULL OR oauth_access_encrypted IS NOT NULL)`);
+}
+
+async function runOnce(name, sql) {
+  await pool.query("CREATE TABLE IF NOT EXISTS app_migrations (name TEXT PRIMARY KEY, ran_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  const { rowCount } = await pool.query("INSERT INTO app_migrations (name) VALUES ($1) ON CONFLICT DO NOTHING", [name]);
+  if (rowCount === 1) {
+    const r = await pool.query(sql);
+    console.log(`🗄️ Migration ${name} : ${r.rowCount} ligne(s)`);
+  }
 }
 
 // Formule Pro active = plan "pro" non expire

@@ -35,25 +35,33 @@ async function listAccounts(bearer, { pat = false } = {}) {
   return normalizeAccounts(body);
 }
 
-// Echange du code OAuth (PKCE) contre un access token (valide 1 h, pas de
-// refresh) : on ne s'en sert que pour lire la liste des comptes du client.
-async function exchangeOAuthCode({ code, codeVerifier, redirectUri }) {
+async function tokenRequest(fields) {
   if (!OAUTH_CLIENT) throw new Error("DERIV_OAUTH_CLIENT_ID manquant sur le serveur");
-  const form = new URLSearchParams({
-    grant_type:    "authorization_code",
-    client_id:     OAUTH_CLIENT,
-    code,
-    code_verifier: codeVerifier,
-    redirect_uri:  redirectUri,
-  });
   const res  = await fetch(DERIV_AUTH, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: form,
+    body: new URLSearchParams({ client_id: OAUTH_CLIENT, ...fields }),
   });
   const body = await readBody(res);
   if (!res.ok || !body.access_token) throw new Error(`OAuth Deriv: ${errMessage(body)}`);
-  return body.access_token;
+  // Deriv documente un access token de 1 h ; on trace (sans valeurs) ce qui
+  // est reellement renvoye pour savoir si un refresh token existe.
+  console.log("OAuth Deriv : champs recus =", Object.keys(body).join(","), "| expires_in =", body.expires_in);
+  return {
+    accessToken:  body.access_token,
+    refreshToken: body.refresh_token || null,
+    expiresAt:    new Date(Date.now() + (Number(body.expires_in) || 3600) * 1000),
+  };
 }
 
-module.exports = { listAccounts, exchangeOAuthCode };
+// Echange du code OAuth (PKCE) contre les jetons du client
+function exchangeOAuthCode({ code, codeVerifier, redirectUri }) {
+  return tokenRequest({ grant_type: "authorization_code", code, code_verifier: codeVerifier, redirect_uri: redirectUri });
+}
+
+// Renouvellement, si Deriv a fourni un refresh token
+function refreshOAuth(refreshToken) {
+  return tokenRequest({ grant_type: "refresh_token", refresh_token: refreshToken });
+}
+
+module.exports = { listAccounts, exchangeOAuthCode, refreshOAuth };

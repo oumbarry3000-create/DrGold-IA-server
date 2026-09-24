@@ -3,6 +3,7 @@ const WebSocket = require("ws");
 const { pool }                   = require("../db");
 const { getSignal, calcGridLot } = require("../strategy/trendRider");
 const { sendTelegram }           = require("../strategy/telegram");
+const { refreshOAuth }           = require("../derivApi");
 
 // Nouvelle API Deriv (tokens "pat_...") : l'ancien WS ws.binaryws.com renvoie
 // 520. Flux : REST (Bearer PAT + Deriv-App-ID) -> liste des comptes -> OTP ->
@@ -32,23 +33,53 @@ class DerivClient {
     this.sessionStart = Date.now();
   }
 
-  async _derivRest(method, path) {
-    const res = await fetch(DERIV_API + path, {
-      method,
-      headers: {
-        Authorization:  `Bearer ${this.derivToken}`,
-        "Deriv-App-ID": DERIV_APP_ID || "",
-        "Content-Type": "application/json",
-      },
-    });
+  async _derivRest(method, path, retried = false) {
+    const headers = { Authorization: `Bearer ${this.derivToken}`, "Content-Type": "application/json" };
+    if (this.authKind !== "oauth") headers["Deriv-App-ID"] = DERIV_APP_ID || ""; // requis pour les PAT
+    const res = await fetch(DERIV_API + path, { method, headers });
+    if (res.status === 401 && this.authKind === "oauth" && !retried) {
+      await this._onOAuthExpired();
+      return this._derivRest(method, path, true);
+    }
     const text = await res.text();
     let body;
     try { body = JSON.parse(text); } catch { body = null; }
     if (!res.ok) {
       const msg = body?.errors?.[0]?.message || body?.error?.message || body?.message || text.slice(0, 200);
-      throw new Error(`HTTP ${res.status} ${method} ${path}: ${msg}`);
+      const err = new Error(`HTTP ${res.status} ${method} ${path}: ${msg}`);
+      err.status = res.status;
+      throw err;
     }
     return body;
+  }
+
+  // Jeton OAuth expire : renouvellement si Deriv a fourni un refresh token,
+  // sinon le client doit se reconnecter (le moteur coupe alors ce bot).
+  async _onOAuthExpired() {
+    const { encrypt } = require("../routes");
+    if (this.refreshToken) {
+      try {
+        const t = await refreshOAuth(this.refreshToken);
+        this.derivToken   = t.accessToken;
+        if (t.refreshToken) this.refreshToken = t.refreshToken;
+        const encAccess   = encrypt(t.accessToken);
+        this.tokenEncrypted = encAccess; // evite une reconnexion inutile par le moteur
+        await pool.query(
+          `UPDATE users SET oauth_access_encrypted = $1, oauth_expires_at = $2,
+             oauth_refresh_encrypted = COALESCE($3, oauth_refresh_encrypted) WHERE uid = $4`,
+          [encAccess, t.expiresAt, t.refreshToken ? encrypt(t.refreshToken) : null, this.uid]
+        );
+        console.log(`[${this.uid}] Jeton OAuth renouvele`);
+        return;
+      } catch (err) {
+        console.error(`[${this.uid}] Renouvellement OAuth impossible:`, err.message);
+      }
+    }
+    console.log(`[${this.uid}] Connexion Deriv expiree : le client doit se reconnecter`);
+    this.running = false;
+    await pool.query("UPDATE users SET deriv_reauth_needed = true, deriv_connected = false WHERE uid = $1", [this.uid]).catch(() => {});
+    this._tg("⚠️ <b>DrGold IA en pause</b>\nVotre connexion Deriv a expiré. Ouvrez l'application et cliquez sur « Reconnecter Deriv ».");
+    throw new Error("connexion Deriv expiree (reconnexion requise)");
   }
 
   // Choisit le compte : demo par defaut, reel seulement si params.derivAccountType === "real"
