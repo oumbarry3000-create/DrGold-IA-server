@@ -68,5 +68,7 @@ export const api = {
   adminDeleteUser: (uid) => authFetch(`/api/admin/users/${encodeURIComponent(uid)}`, { method: "DELETE" }),
   unlinkDeriv: () => authFetch("/api/deriv/unlink", { method: "POST" }),
   deleteAccount: () => authFetch("/api/me", { method: "DELETE", body: JSON.stringify({ confirm: "SUPPRIMER" }) }),
+  assistantStatus: () => authFetch("/api/assistant/status"),
+  askAssistant: (messages) => authFetch("/api/assistant", { method: "POST", body: JSON.stringify({ messages }) }),
   adminUpdate: (uid, body) => authFetch(`/api/admin/users/${encodeURIComponent(uid)}`, { method: "POST", body: JSON.stringify(body) }),
 };

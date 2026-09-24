@@ -15,6 +15,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false })); // webhook CinetPay
 app.use("/", routes);
 app.use("/", require("./messaging"));
+app.use("/", require("./assistant"));
 
 async function main() {
   await initFirebase();

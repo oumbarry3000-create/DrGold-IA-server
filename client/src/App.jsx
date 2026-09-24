@@ -9,11 +9,12 @@ import Payment   from "./pages/Payment";
 import DerivCallback from "./pages/DerivCallback";
 import Messages  from "./pages/Messages";
 import { DialogHost } from "./components/Dialog";
+import Barryx from "./components/Barryx";
 
 function PrivateRoute({ children }) {
   const { user } = useAuth();
   if (user === undefined) return <div style={{ color: "#475569", padding: 40, fontFamily: "Inter, sans-serif" }}>Chargement...</div>;
-  return user ? children : <Navigate to="/login" replace />;
+  return user ? <>{children}<Barryx /></> : <Navigate to="/login" replace />;
 }
 
 export default function App() {
