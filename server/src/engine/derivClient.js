@@ -4,7 +4,11 @@ const { pool }                   = require("../db");
 const { getSignal, calcGridLot } = require("../strategy/trendRider");
 const { sendTelegram }           = require("../strategy/telegram");
 
-const DERIV_WS_URL = "wss://ws.binaryws.com/websockets/v3?app_id=1089";
+// Nouvelle API Deriv (tokens "pat_...") : l'ancien WS ws.binaryws.com renvoie
+// 520. Flux : REST (Bearer PAT + Deriv-App-ID) -> liste des comptes -> OTP ->
+// WebSocket deja authentifie (plus de message "authorize").
+const DERIV_API    = "https://api.derivws.com/trading/v1/options";
+const DERIV_APP_ID = process.env.DERIV_APP_ID;
 const SYMBOL       = "frxXAUUSD";
 const TIMEFRAME    = 60; // 1 minute candles
 
@@ -27,12 +31,66 @@ class DerivClient {
     this.sessionStart = Date.now();
   }
 
-  start() {
+  async _derivRest(method, path) {
+    const res = await fetch(DERIV_API + path, {
+      method,
+      headers: {
+        Authorization:  `Bearer ${this.derivToken}`,
+        "Deriv-App-ID": DERIV_APP_ID || "",
+        "Content-Type": "application/json",
+      },
+    });
+    const text = await res.text();
+    let body;
+    try { body = JSON.parse(text); } catch { body = null; }
+    if (!res.ok) {
+      const msg = body?.errors?.[0]?.message || body?.error?.message || body?.message || text.slice(0, 200);
+      throw new Error(`HTTP ${res.status} ${method} ${path}: ${msg}`);
+    }
+    return body;
+  }
+
+  // Choisit le compte : demo par defaut, reel seulement si params.derivAccountType === "real"
+  _pickAccount(accounts) {
+    const isDemo = (a) =>
+      a.account_type === "demo" || a.type === "demo" || a.is_virtual === true || a.is_virtual === 1 ||
+      /^(VRT|DOT)/i.test(a.account_id || a.accountId || a.loginid || "");
+    const wantReal = this.params.derivAccountType === "real";
+    return accounts.find((a) => (wantReal ? !isDemo(a) : isDemo(a)));
+  }
+
+  async start() {
+    if (!this.running) return;
     console.log(`[${this.uid}] Connexion Deriv...`);
-    this.ws = new WebSocket(DERIV_WS_URL);
+    let wsUrl;
+    try {
+      if (!DERIV_APP_ID) throw new Error("DERIV_APP_ID manquant dans les variables d'environnement du serveur");
+      const list = await this._derivRest("GET", "/accounts");
+      const accounts = Array.isArray(list?.data) ? list.data : Array.isArray(list) ? list : (list?.data?.accounts || []);
+      console.log(`[${this.uid}] Comptes Deriv:`, JSON.stringify(accounts.map((a) => {
+        const { balance, ...rest } = a; return rest;
+      })).slice(0, 400));
+      const account = this._pickAccount(accounts);
+      if (!account) throw new Error(`aucun compte ${this.params.derivAccountType === "real" ? "reel" : "demo"} trouve`);
+      this.accountId = account.account_id || account.accountId || account.loginid || account.id;
+      this.accountCurrency = account.currency || "USD";
+      const otp = await this._derivRest("POST", `/accounts/${this.accountId}/otp`);
+      wsUrl = otp?.data?.url || otp?.url;
+      if (!wsUrl) throw new Error("reponse OTP sans url");
+    } catch (err) {
+      console.error(`[${this.uid}] Deriv REST error:`, err.message);
+      this._updateUserDoc({ deriv_connected: false });
+      if (this.running) this.retryTimer = setTimeout(() => this.start(), 30000);
+      return;
+    }
+    if (!this.running) return;
+
+    this.ws = new WebSocket(wsUrl);
 
     this.ws.on("open", () => {
-      this._send({ authorize: this.derivToken });
+      // Le WS est deja authentifie par l'OTP : on demande le solde puis on
+      // demarre les abonnements (equivalent de l'ancien "authorize").
+      this._send({ balance: 1, subscribe: 1 });
     });
 
     this.ws.on("message", (raw) => {
@@ -49,7 +107,7 @@ class DerivClient {
       this.authorized = false;
       this._updateUserDoc({ deriv_connected: false });
       if (this.running) {
-        setTimeout(() => this.start(), 5000); // reconnect
+        this.retryTimer = setTimeout(() => this.start(), 5000); // reconnect (nouvel OTP)
       }
     });
 
@@ -60,6 +118,7 @@ class DerivClient {
 
   stop() {
     this.running = false;
+    clearTimeout(this.retryTimer);
     if (this.ws) this.ws.close();
   }
 
@@ -77,6 +136,27 @@ class DerivClient {
     }
 
     switch (msg.msg_type) {
+      case "balance":
+        if (!msg.balance) break;
+        if (!this.authorized) {
+          this.authorized = true;
+          const loginid = msg.balance.loginid || this.accountId;
+          console.log(`[${this.uid}] Connecté Deriv: ${loginid} | solde ${msg.balance.balance} ${msg.balance.currency || ""}`);
+          this._updateUserDoc({
+            deriv_balance:   msg.balance.balance,
+            deriv_loginid:   loginid,
+            deriv_currency:  msg.balance.currency || this.accountCurrency,
+            deriv_connected: true,
+          });
+          this._subscribeCandles();
+          this._subscribeDailyCandles();
+          this._subscribeOpenContracts();
+          this._tg(`🟢 <b>DrGold IA Démarré</b>\n📊 ${SYMBOL}\n💰 Balance: ${msg.balance.balance}`);
+        } else {
+          this._updateUserDoc({ deriv_balance: msg.balance.balance });
+        }
+        break;
+
       case "authorize":
         this.authorized = true;
         console.log(`[${this.uid}] Autorisé: ${msg.authorize.loginid}`);
