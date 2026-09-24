@@ -124,10 +124,26 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 CREATE INDEX IF NOT EXISTS idx_notifications_uid ON notifications(uid, created_at DESC);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;
+
+-- Configuration globale (parametres du bot geres par l'admin)
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `;
 
 async function initDb() {
   await pool.query(SCHEMA);
+  // Parametres du bot devenus globaux : on reprend ceux du trader le plus
+  // actif (sans ses reglages Telegram) pour ne pas changer le comportement actuel
+  await runOnce("global_bot_params_2026_09_24",
+    `INSERT INTO app_settings (key, value)
+     SELECT 'bot_params', u.params - 'tgBotToken' - 'tgChatID' - 'tgMiniAppURL'
+     FROM users u
+     ORDER BY (SELECT COUNT(*) FROM trades t WHERE t.uid = u.uid) DESC
+     LIMIT 1
+     ON CONFLICT (key) DO NOTHING`);
   await runOnce("auto_approve_linked_2026_09_24",
     // Passage a la validation automatique : les traders deja lies qui
     // attendaient une validation manuelle sont valides (une seule fois, pour

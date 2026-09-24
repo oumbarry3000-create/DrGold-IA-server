@@ -23,31 +23,7 @@ const FRONTEND_URL  = process.env.FRONTEND_URL || "https://drgold-ia.web.app";
 const BACKEND_URL   = process.env.BACKEND_URL || "https://drgold-ia-server-m1mz.onrender.com";
 const OAUTH_REDIRECT = `${FRONTEND_URL}/deriv-callback`;
 
-const DEFAULT_EA_PARAMS = {
-  stratMode: "CONTINUATION",
-  candleCount: 3,
-  initialLot: 0.01,
-  martingaleMult: 1.5,
-  maxGridLevels: 3,
-  gridMode: "FIXE",
-  gridDistancePips: 50,
-  gridATRMult: 1.5,
-  globalTPMoney: 10,
-  globalSLMoney: 20,
-  breakEvenMoney: 5,
-  dailyLossLimit: 20,
-  useDailyFilters: false,
-  emaPeriod: 200,
-  useRSI: false,
-  rsiPeriod: 14,
-  rsiLevelHigh: 70,
-  rsiLevelLow: 30,
-  atrPeriod: 14,
-  tgBotToken: "",
-  tgChatID: "",
-  tgMiniAppURL: "",
-  magicNumber: 990011,
-};
+const { DEFAULT_EA_PARAMS, TG_KEYS, pick, getBotParams, setBotParams } = require("./botSettings");
 
 function encrypt(text) {
   const iv         = crypto.randomBytes(IV_LENGTH);
@@ -164,12 +140,14 @@ router.get("/api/me", requireAuth, async (req, res) => {
   }
 });
 
-// PUT /api/settings — met a jour les parametres EA
+// PUT /api/settings — reglages PERSONNELS du trader (notifications Telegram).
+// Les parametres du bot sont globaux et reserves a l'admin (/api/admin/bot-settings).
 router.put("/api/settings", requireAuth, async (req, res) => {
   try {
     const { params } = req.body;
     if (!params) return res.status(400).json({ error: "params requis" });
-    await pool.query("UPDATE users SET params = $1 WHERE uid = $2", [JSON.stringify(params), req.uid]);
+    const personal = pick(params, TG_KEYS);
+    await pool.query("UPDATE users SET params = params || $1::jsonb WHERE uid = $2", [JSON.stringify(personal), req.uid]);
     res.json({ status: "ok" });
   } catch (err) {
     console.error("settings error:", err);
@@ -401,6 +379,25 @@ router.put("/api/profile", requireAuth, async (req, res) => {
   const name = String(req.body?.display_name || "").trim().slice(0, 60);
   await pool.query("UPDATE users SET display_name = $1 WHERE uid = $2", [name || null, req.uid]);
   res.json({ display_name: name || null });
+});
+
+// GET /api/admin/bot-settings — parametres du bot (communs a tous les traders)
+router.get("/api/admin/bot-settings", requireAuth, requireAdmin, async (req, res) => {
+  const { rows } = await pool.query("SELECT updated_at FROM app_settings WHERE key = 'bot_params'");
+  res.json({ params: await getBotParams(), updated_at: rows[0]?.updated_at || null });
+});
+
+// PUT /api/admin/bot-settings — s'applique a tous les bots au prochain passage du moteur
+router.put("/api/admin/bot-settings", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    if (!req.body?.params) return res.status(400).json({ error: "params requis" });
+    const params = await setBotParams(req.body.params);
+    console.log(`[admin ${req.email}] parametres du bot mis a jour`);
+    res.json({ params });
+  } catch (err) {
+    console.error("bot-settings error:", err);
+    res.status(500).json({ error: "Enregistrement impossible" });
+  }
 });
 
 // PUT /api/account-type — demo / reel (reel = formule Pro active)

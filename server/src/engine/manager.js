@@ -7,6 +7,7 @@ const DerivClient  = require("./derivClient");
 const { decrypt }  = require("../routes");
 const { sendTelegram } = require("../strategy/telegram");
 const { notify }       = require("../notifications");
+const { getBotParams, TG_KEYS, pick } = require("../botSettings");
 
 // Map uid -> DerivClient actif
 const activeClients = new Map();
@@ -25,7 +26,8 @@ async function pollUsers() {
        WHERE deriv_account_type = 'real' AND (plan <> 'pro' OR plan_expires_at IS NULL OR plan_expires_at <= now())`
     );
 
-    await enforceDailyLossLimits();
+    const botParams = await getBotParams();
+    await enforceDailyLossLimits(botParams);
 
     const { rows } = await pool.query(
       `SELECT uid, ea_active, approved, params, token_encrypted, oauth_access_encrypted, oauth_refresh_encrypted,
@@ -49,16 +51,16 @@ async function pollUsers() {
       const client   = activeClients.get(uid);
 
       if (eligible && !client) {
-        await activateUser(uid, row, type);
+        await activateUser(uid, { ...row, params: { ...botParams, ...pick(row.params, TG_KEYS) } }, type);
       } else if (!eligible && client) {
         deactivateUser(uid);
       } else if (eligible && client && (client.tokenEncrypted !== row.credKey || client.accountType !== type)) {
         // Nouveau token ou passage demo <-> reel : reconnexion
         console.log(`[${uid}] Token ou compte change (${client.accountType} -> ${type}), reconnexion...`);
         deactivateUser(uid);
-        await activateUser(uid, row, type);
+        await activateUser(uid, { ...row, params: { ...botParams, ...pick(row.params, TG_KEYS) } }, type);
       } else if (eligible && client) {
-        client.params = { ...client.params, ...row.params, derivAccountType: type };
+        client.params = { ...botParams, ...pick(row.params, TG_KEYS), derivAccountType: type };
       }
     }
   } catch (err) {
@@ -67,7 +69,7 @@ async function pollUsers() {
 }
 
 // Limite de perte journaliere (params.dailyLossLimit en USD, 0 = desactivee)
-async function enforceDailyLossLimits() {
+async function enforceDailyLossLimits(botParams) {
   const { rows } = await pool.query(`
     SELECT u.uid, u.params, t.pnl_today
     FROM users u
@@ -79,7 +81,7 @@ async function enforceDailyLossLimits() {
     WHERE u.ea_active = true`);
 
   for (const row of rows) {
-    const limit = Number(row.params?.dailyLossLimit || 0);
+    const limit = Number(botParams.dailyLossLimit || 0);
     const pnl   = Number(row.pnl_today || 0);
     // Alerte a 80 % de la limite (une fois par jour)
     if (limit > 0 && pnl <= -0.8 * limit && pnl > -limit) {

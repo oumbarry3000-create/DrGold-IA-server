@@ -19,6 +19,7 @@ export default function Settings() {
   const [derivToken, setDerivToken]   = useState("");
   const [derivLogin, setDerivLogin]   = useState(null);
   const [derivStatus, setDerivStatus] = useState(null); // null | "saving" | "ok" | message d'erreur
+  const [isAdmin, setIsAdmin]         = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -26,7 +27,11 @@ export default function Settings() {
       if (!uid) return;
       try {
         const { user } = await api.me();
-        const p = { ...DEFAULT_EA_PARAMS, ...(user?.params || {}) };
+        setIsAdmin(!!user?.is_admin);
+        // Parametres du bot : globaux, geres par l'admin ; chaque trader ne garde que Telegram
+        const bot = user?.is_admin ? (await api.adminBotSettings()).params : {};
+        const own = user?.params || {};
+        const p = { ...DEFAULT_EA_PARAMS, ...bot, tgBotToken: own.tgBotToken || "", tgChatID: own.tgChatID || "", tgMiniAppURL: own.tgMiniAppURL || "" };
         setParams(p);
         setSavedParams(p);
         setDerivLogin(user?.deriv_loginid || null);
@@ -56,10 +61,11 @@ export default function Settings() {
   async function save() {
     setSaving(true);
     try {
-      await api.saveSettings(params);
+      if (isAdmin) await api.saveAdminBotSettings(params); // s'applique a tous les traders
+      await api.saveSettings({ tgBotToken: params.tgBotToken, tgChatID: params.tgChatID, tgMiniAppURL: params.tgMiniAppURL });
       setSavedParams(params);
       setSaved(true);
-      notify("Paramètres enregistrés");
+      notify(isAdmin ? "Paramètres du bot enregistrés pour tous les traders" : "Paramètres enregistrés");
       setTimeout(() => setSaved(false), 2500);
     } catch (err) {
       notify(`Enregistrement impossible : ${err.message}`, "error");
@@ -165,8 +171,20 @@ export default function Settings() {
 
   return (
     <PageWrap>
-      <PageHeader title="⚙️ Paramètres EA" subtitle="Configuration TrendRider — XAUUSD" onBack={confirmLeave}
-        actions={<button style={s.resetBtn} onClick={resetDefaults}>↺ Réinitialiser</button>} />
+      <PageHeader title="⚙️ Paramètres" subtitle={isAdmin ? "Bot TrendRider (tous les traders) et compte" : "Notifications, connexion Deriv et compte"} onBack={confirmLeave}
+        actions={isAdmin && <button style={s.resetBtn} onClick={resetDefaults}>↺ Réinitialiser le bot</button>} />
+
+      {!isAdmin && (
+        <div style={s.infoBox} role="note">
+          🤖 La stratégie du bot (mises, grille, objectifs, filtres, perte max par jour) est réglée par l'équipe Tradify pour tous les traders.
+          Vous pouvez configurer ici vos notifications, votre connexion Deriv et votre compte.
+        </div>
+      )}
+
+      {isAdmin && (<>
+      <div style={s.adminBox} role="note">
+        🛡️ <strong>Paramètres du bot — réservés à l'admin.</strong> Ils s'appliquent à <strong>tous les traders</strong> (démo et réel) dans les 10 secondes suivant l'enregistrement.
+      </div>
 
       <Section title="🎯 Configuration Stratégie">
         <Row label="Mode Stratégie">
@@ -239,6 +257,13 @@ export default function Settings() {
         </Row>
       </Section>
 
+      <Section title="🔧 Avancé">
+        <Row label="Magic Number">
+          <NumInput value={params.magicNumber} min={1} max={9999999} step={1} onChange={(v) => set("magicNumber", v)} />
+        </Row>
+      </Section>
+      </>)}
+
       <Section title="🔑 Mode 24h/24 (optionnel)">
         <Row label={derivLogin ? `Compte actuel : ${derivLogin}` : "Aucun compte Deriv connecté"}>
           <input style={s.textInput} type="password" value={derivToken} autoComplete="off"
@@ -268,12 +293,6 @@ export default function Settings() {
         </Row>
         <Row label="URL MiniApp (optionnel)">
           <TextInput value={params.tgMiniAppURL} onChange={(v) => set("tgMiniAppURL", v)} placeholder="https://..." />
-        </Row>
-      </Section>
-
-      <Section title="🔧 Avancé">
-        <Row label="Magic Number">
-          <NumInput value={params.magicNumber} min={1} max={9999999} step={1} onChange={(v) => set("magicNumber", v)} />
         </Row>
       </Section>
 
@@ -398,6 +417,8 @@ const s = {
   toggleKnobOn:   { left: 23, background: "#060d1a" },
   footer:         { position: "sticky", bottom: 0, background: "#060d1a", padding: "12px 0", display: "flex", flexDirection: "column", gap: 8, zIndex: 5 },
   saveBtn:        { background: "linear-gradient(135deg, #f59e0b, #d97706)", color: "#060d1a", border: "none", borderRadius: 10, padding: "14px 0", fontSize: 15, fontWeight: 800, cursor: "pointer", width: "100%" },
+  infoBox:        { background: "rgba(47,123,255,.1)", border: "1px solid rgba(47,123,255,.35)", borderRadius: 12, padding: "12px 16px", color: "#cfe0ff", fontSize: 13, lineHeight: 1.6, marginBottom: 16 },
+  adminBox:       { background: "rgba(245,185,26,.1)", border: "1px solid rgba(245,185,26,.4)", borderRadius: 12, padding: "12px 16px", color: "#fde68a", fontSize: 13, lineHeight: 1.6, marginBottom: 16 },
   resetBtn:       { background: "#0d1829", border: "1px solid #1e3a5f", borderRadius: 8, padding: "8px 14px", color: "#94a3b8", fontSize: 13, fontWeight: 600, cursor: "pointer" },
   accountRow:     { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "12px 0", borderBottom: "1px solid #1e3a5f" },
   accountTitle:   { color: "#f1f5f9", fontSize: 14, fontWeight: 700, margin: 0 },

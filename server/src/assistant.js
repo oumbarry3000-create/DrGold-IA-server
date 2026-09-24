@@ -11,6 +11,7 @@ const router = express.Router();
 const { pool, isProActive, effectiveAccountType } = require("./db");
 const { requireAuth } = require("./auth");
 const { ADMIN_EMAILS } = require("./routes");
+const { effectiveParams } = require("./botSettings");
 
 const OpenAI    = OpenAIModule.default || OpenAIModule;
 const API_KEY   = process.env.AI_API_KEY || "";
@@ -93,13 +94,14 @@ Site : https://drgold-ia.web.app — un robot de trading automatique sur l'or (X
 - « Sessions de marché » : Tokyo, Londres, New York, à l'heure du téléphone du trader.
 
 ## Paramètres (« ⚙️ Paramètres »)
+- IMPORTANT : la stratégie du bot (mode, bougies, lot initial, martingale, grille, TP/SL/Break even, filtres, perte max par jour) est réglée par l’équipe Tradify (l’admin) et s’applique à TOUS les traders. Un trader ne peut PAS la modifier : dans « Paramètres » il règle seulement ses notifications Telegram, le mode 24h/24, son profil et son compte. S’il souhaite une mise ou un risque différent, oriente-le vers le Support. Les explications ci-dessous servent à comprendre les réglages, pas à les changer.
 - Stratégie : mode CONTINUATION (suit la tendance) ou RETOURNEMENT, nombre de bougies alignées pour déclencher un signal.
 - Lot initial : taille de départ. Sur Deriv la mise = lot × 10 $, minimum 0,50 $ (ex. 0,01 lot → 0,50 $).
 - Multiplicateur martingale et niveaux de grille max : après une perte le bot peut ouvrir un niveau suivant avec une mise multipliée. Plus le multiplicateur et le nombre de niveaux sont élevés, plus le risque augmente — conseiller la prudence.
 - TP global / SL global / Break even (en $), filtres Daily (EMA, RSI), période ATR.
 - « Perte max par jour ($) » : si les pertes du jour atteignent ce montant, le bot s'arrête tout seul pour la journée (20 $ par défaut, 0 = pas de limite). Il faut le réactiver manuellement ensuite.
 - Telegram : créer un bot avec @BotFather (commande /newbot) → copier le « Bot Token » ; pour le « Chat ID », écrire au bot puis utiliser @userinfobot pour obtenir son identifiant. Coller les deux et enregistrer : le trader reçoit démarrage, trades, arrêts.
-- Bouton « Enregistrer les paramètres » en bas ; « ↺ Réinitialiser » remet les valeurs par défaut (Telegram conservé).
+- Bouton « Enregistrer les paramètres » en bas (pour Telegram).
 - Section « 🪪 Profil » : nom affiché. Section « 👤 Compte » : « Déconnecter Deriv » (arrête le bot), « Se déconnecter », « Supprimer mon compte » (taper SUPPRIMER ; le compte Deriv et l'argent ne sont pas touchés).
 
 ## Messages et annonces
@@ -195,6 +197,7 @@ router.post("/api/assistant", requireAuth, async (req, res) => {
        FROM trades WHERE uid = $1`,
       [req.uid]
     );
+    if (u) u.params = await effectiveParams(u.params); // reglages reels du bot (globaux)
     const system = u ? `${knowledge()}\n\n${contextBlock(u, stats)}` : knowledge();
     const reply  = await askModel(system, messages);
     res.json({ reply, remaining: isAdmin ? null : remaining });

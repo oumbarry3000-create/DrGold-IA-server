@@ -87,5 +87,7 @@ export const api = {
   readNotification: (id) => authFetch(`/api/notifications/${id}/read`, { method: "POST" }),
   readAllNotifications: () => authFetch("/api/notifications/read-all", { method: "POST" }),
   updateProfile: (display_name) => authFetch("/api/profile", { method: "PUT", body: JSON.stringify({ display_name }) }),
+  adminBotSettings: () => authFetch("/api/admin/bot-settings"),
+  saveAdminBotSettings: (params) => authFetch("/api/admin/bot-settings", { method: "PUT", body: JSON.stringify({ params }) }),
   adminUpdate: (uid, body) => authFetch(`/api/admin/users/${encodeURIComponent(uid)}`, { method: "POST", body: JSON.stringify(body) }),
 };
