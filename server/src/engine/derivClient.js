@@ -130,7 +130,7 @@ class DerivClient {
 
   _handleMessage(msg) {
     if (msg.error) {
-      console.error(`[${this.uid}] Deriv error:`, msg.error.message);
+      console.error(`[${this.uid}] Deriv error (${msg.msg_type || Object.keys(msg.echo_req || {})[0]}):`, msg.error.message);
       if (!this.authorized) this._updateUserDoc({ deriv_connected: false });
       return;
     }
@@ -151,7 +151,7 @@ class DerivClient {
           this._subscribeCandles();
           this._subscribeDailyCandles();
           this._subscribeOpenContracts();
-          this._tg(`🟢 <b>DrGold IA Démarré</b>\n📊 ${SYMBOL}\n💰 Balance: ${msg.balance.balance}`);
+          this._tg(`🟢 <b>DrGold IA Démarré</b>\n📊 ${SYMBOL}\n💰 Balance: $${msg.balance.balance}`);
         } else {
           this._updateUserDoc({ deriv_balance: msg.balance.balance });
         }
@@ -236,7 +236,7 @@ class DerivClient {
   }
 
   _subscribeOpenContracts() {
-    this._send({ proposal_open_contracts: 1, subscribe: 1 });
+    this._send({ proposal_open_contract: 1, subscribe: 1 });
     this._send({ transaction: 1, subscribe: 1 });
   }
 
