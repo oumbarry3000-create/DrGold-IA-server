@@ -24,6 +24,11 @@ async function pollUsers() {
         await activateUser(uid, row);
       } else if (!eaActive && activeClients.has(uid)) {
         deactivateUser(uid);
+      } else if (eaActive && activeClients.get(uid).tokenEncrypted !== row.token_encrypted) {
+        // Token Deriv change depuis Parametres -> reconnexion avec le nouveau
+        console.log(`[${uid}] Nouveau token Deriv, reconnexion...`);
+        deactivateUser(uid);
+        await activateUser(uid, row);
       } else if (eaActive && activeClients.has(uid)) {
         const client = activeClients.get(uid);
         client.params = { ...client.params, ...row.params };
@@ -47,6 +52,7 @@ async function activateUser(uid, row) {
 
     console.log(`[${uid}] Activation EA...`);
     const client = new DerivClient(uid, derivToken, params);
+    client.tokenEncrypted = tokenEncrypted;
     activeClients.set(uid, client);
     client.start();
   } catch (err) {

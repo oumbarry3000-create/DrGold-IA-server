@@ -8,6 +8,9 @@ export default function Settings() {
   const [params, setParams] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved]   = useState(false);
+  const [derivToken, setDerivToken]   = useState("");
+  const [derivLogin, setDerivLogin]   = useState(null);
+  const [derivStatus, setDerivStatus] = useState(null); // null | "saving" | "ok" | message d'erreur
 
   useEffect(() => {
     async function load() {
@@ -15,6 +18,7 @@ export default function Settings() {
       if (!uid) return;
       const { user } = await api.me();
       setParams({ ...DEFAULT_EA_PARAMS, ...(user?.params || {}) });
+      setDerivLogin(user?.deriv_loginid || null);
     }
     load();
   }, []);
@@ -29,6 +33,18 @@ export default function Settings() {
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
+  }
+
+  async function saveDerivToken() {
+    if (!derivToken.trim()) return;
+    setDerivStatus("saving");
+    try {
+      await api.updateDerivToken(derivToken.trim());
+      setDerivToken("");
+      setDerivStatus("ok");
+    } catch (err) {
+      setDerivStatus(err.message);
+    }
   }
 
   if (!params) return <PageWrap><p style={{ color: "#64748b" }}>Chargement...</p></PageWrap>;
@@ -106,6 +122,26 @@ export default function Settings() {
         <Row label="Période ATR">
           <NumInput value={params.atrPeriod} min={1} max={100} step={1} onChange={(v) => set("atrPeriod", v)} />
         </Row>
+      </Section>
+
+      <Section title="🔑 Compte Deriv">
+        <Row label={derivLogin ? `Compte actuel : ${derivLogin}` : "Aucun compte Deriv connecté"}>
+          <input style={s.textInput} type="password" value={derivToken} autoComplete="off"
+            onChange={(e) => { setDerivToken(e.target.value); setDerivStatus(null); }}
+            placeholder="Nouveau token Deriv (Read + Trade)" />
+        </Row>
+        <div style={s.derivFooter}>
+          <span style={{ ...s.derivHint, ...(derivStatus && derivStatus !== "ok" && derivStatus !== "saving" ? { color: "#fca5a5" } : {}) }}>
+            {derivStatus === "ok"
+              ? "✅ Token enregistré. Si l'EA est actif, il se reconnecte avec ce token dans les 10 s."
+              : derivStatus && derivStatus !== "saving" ? derivStatus
+              : "Créez le token sur app.deriv.com → API Token. Il est chiffré avant stockage."}
+          </span>
+          <button style={{ ...s.derivBtn, ...(!derivToken.trim() || derivStatus === "saving" ? s.saveBtnDisabled : {}) }}
+            onClick={saveDerivToken} disabled={!derivToken.trim() || derivStatus === "saving"}>
+            {derivStatus === "saving" ? "Enregistrement..." : "Enregistrer le token"}
+          </button>
+        </div>
       </Section>
 
       <Section title="📱 Telegram">
@@ -198,6 +234,9 @@ const s = {
   sectionTitle:   { color: "#f59e0b", fontSize: 13, fontWeight: 700, padding: "14px 20px", borderBottom: "1px solid #1e3a5f", margin: 0, background: "#0a1525" },
   sectionBody:    { padding: "8px 0" },
   row:            { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 20px", borderBottom: "1px solid #0f2040" },
+  derivFooter:    { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", paddingTop: 4 },
+  derivHint:      { color: "#64748b", fontSize: 12, flex: 1, minWidth: 200 },
+  derivBtn:       { background: "#1e3a5f", color: "#f1f5f9", border: "1px solid #2d4a6f", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
   rowLabel:       { color: "#94a3b8", fontSize: 13, flex: 1 },
   rowControl:     { flex: "0 0 auto" },
   numInput:       { background: "#0a1525", border: "1px solid #1e3a5f", borderRadius: 8, padding: "7px 12px", color: "#f1f5f9", fontSize: 14, width: 120, textAlign: "right", outline: "none" },
